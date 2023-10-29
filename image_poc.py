@@ -29,21 +29,12 @@ def run_queue(pending, finished):
     size = pending.qsize()
     while True:
         try:
-            '''
-                try to get task from the queue. get_nowait() function will 
-                raise queue.Empty exception if the queue is empty. 
-                queue(False) function would do the same task also.
-            '''
-            file = pending.get_nowait()
-        except queue.Empty:
+            file = pending.get_nowait() #This will raise an exception if it is empty
+        except queue.Empty: #Excemption raised if queue is empty. Breaks the while loop.
             break
-        else:
-            '''
-                if no exception has been raised, add the task completion 
-                message to task_that_are_done queue
-            '''
+        else: #No exception has been raised, add the task completion 
             adjustor(file) #Executes actual image processing
-            print(json.loads(file)['filename'], finished.qsize())
+            print(json.loads(file)['filename'])
             finished.put_nowait(json.loads(file)['filename'] + ' --> ' + current_process().name)
     return True
 
@@ -63,8 +54,8 @@ def coordinator(input_folder, filenames, output_folder, brightness, contrast, sh
         p.start()
     for p in procs:
         p.join()
-    while not finished.empty():
-        print(finished.get())
+    # while not finished.empty():
+    #     print(finished.get())
     return
 
 def adjustBC(image, brightness, contrast):
@@ -117,7 +108,10 @@ def main():
     output_folder = createFolder(input_folder)
     filenames = getFilenames(input_folder)
     parameters = getParams()
+    start = time.time()
     coordinator(input_folder, filenames, output_folder, parameters[0], parameters[1], parameters[2])
+    end = time.time()
+    print(f"Runtime: {end-start:.2f}s ({(end-start)/len(filenames):.2f}s/image)")
 
 if __name__ == "__main__":
     main()
