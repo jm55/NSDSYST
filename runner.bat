@@ -1,0 +1,1 @@
+py image_poc.py < input.txt

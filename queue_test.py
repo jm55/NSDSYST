@@ -47,8 +47,7 @@ def main():
         p.join()
 
     # print the output
-    while not tasks_that_are_done.empty():
-        print(tasks_that_are_done.get())
+    
 
     return True
 

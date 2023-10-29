@@ -17,6 +17,7 @@ Brightness & Contrast: https://www.tutorialspoint.com/how-to-change-the-contrast
 Sharpness: https://www.opencvhelp.org/tutorials/image-processing/how-to-sharpen-image/
 Save Image: https://www.geeksforgeeks.org/python-opencv-cv2-imwrite-method/
 Queues: https://www.digitalocean.com/community/tutorials/python-multiprocessing-example
+Measuring Performance: https://docs.opencv.org/3.4/dc/d71/tutorial_py_optimization.html
 '''
 
 def adjustor(json_obj):
@@ -38,6 +39,7 @@ def run_queue(pending, finished):
             finished.put_nowait(json.loads(file)['filename'] + ' --> ' + current_process().name)
     return True
 
+#This can be executed in a distributed manner where the contents of the filenames(list) parameter will dictate what files to process.
 def coordinator(input_folder, filenames, output_folder, brightness, contrast, sharpness):
     pending = Queue()
     finished = Queue()
@@ -64,9 +66,7 @@ def adjustBC(image, brightness, contrast):
     return cv2.convertScaleAbs(image, alpha=contrast, beta=brightness)
 
 def adjustSharpness(image, sharpness):
-    kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
-    sharpness *= -1
-    return cv2.filter2D(image, int(sharpness), kernel)
+    return cv2.filter2D(image, int(sharpness*-1), np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]]))
     
 def getFilenames(folder_path):
     return os.listdir(folder_path)
