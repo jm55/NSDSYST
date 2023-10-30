@@ -40,7 +40,7 @@ def run_queue(pending, finished):
     return True
 
 #This can be executed in a distributed manner where the contents of the filenames(list) parameter will dictate what files to process.
-def coordinator(input_folder, filenames, output_folder, brightness, contrast, sharpness):
+def coordinator(input_folder, filenames, output_folder, brightness, contrast, sharpness, threads=os.cpu_count()):
     pending = Queue()
     finished = Queue()
     procs = []
@@ -50,7 +50,7 @@ def coordinator(input_folder, filenames, output_folder, brightness, contrast, sh
         jsonObj = jsonGenerate(input_folder, str(f), output_folder, brightness, contrast, sharpness)
         pending.put(jsonObj)
     #Create, run, & complete processes
-    for w in range(os.cpu_count()):
+    for w in range(threads):
         p = Process(target=run_queue, args=(pending, finished))
         procs.append(p)
         p.start()
