@@ -6,7 +6,7 @@ import image_poc as poc
 def main():
     print("Image POC Runner")
     print("CPU Count:", os.cpu_count())
-    input_folder = "D:\\Users\\ejose\\Documents\\GitHub\\NSDSYST\\test_images"
+    input_folder = "/home/kali/Documents/GitHub/NSDSYST/test_images"
     output_folder = poc.createFolder(input_folder)
     filenames = poc.getFilenames(input_folder)
     

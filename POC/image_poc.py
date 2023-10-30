@@ -101,15 +101,22 @@ def createFolder(input_folder):
 def testImport():
     print("File Accessible!")
 
-def main():
-    print("Image POC!")
-    print("CPU Count:", os.cpu_count())
+
+def clientSide():
     input_folder = input("Enter absolute folder path containing images: ")
     output_folder = createFolder(input_folder)
     filenames = getFilenames(input_folder)
     parameters = getParams()
+    
+    return [input_folder, output_folder, filenames, parameters]
+
+
+def main():
+    print("Image POC!")
+    print("CPU Count:", os.cpu_count())
+    inputs = clientSide()
     start = time.time()
-    coordinator(input_folder, filenames, output_folder, parameters[0], parameters[1], parameters[2])
+    coordinator(inputs[0], inputs[2], inputs[1], inputs[3][0], inputs[3][1], inputs[3][2])
     end = time.time()
     print(f"Runtime: {end-start:.2f}s ({(end-start)/len(filenames):.2f}s/image)")
 
