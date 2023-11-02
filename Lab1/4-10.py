@@ -17,7 +17,7 @@ def main():
         {
         MotdMaker: "example.motd"
         },
-        host= '192.168.2.252', #change this to the IP address of the computer
+        host= '192.168.101.129', #change this to the IP address of the computer
         ns = True
     )
 
