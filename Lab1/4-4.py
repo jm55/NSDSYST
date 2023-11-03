@@ -9,7 +9,7 @@ class MotdMaker(object):
     def __init__(self):
         self.msg = motd[random.randint(0,2)]
     def get_motd(self, name):
-        return "Message of the daty for {0}: \n".format(name, self.msg)
+        return "Message of the daty for {0}:\n {1}".format(name, self.msg)
 
 daemon = Pyro4.Daemon()
 uri = daemon.register(MotdMaker)
