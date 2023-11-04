@@ -17,8 +17,8 @@ def main():
         {
         MotdMaker: "example.motd"
         },
-        host= '192.168.101.129', #change this to the IP address of the computer
-        ns = True
+        host= '192.168.162.1', #change this to the IP address of the computer
+        ns = True,
     )
 
 if __name__=="__main__":
