@@ -5,15 +5,15 @@ import image_poc as poc
 
 def main():
     print("Image POC Runner")
-    print("CPU Count:", os.cpu_count())
-    input_folder = "/home/kali/Documents/GitHub/NSDSYST/test_images"
+    print("CPU Count:", os.cpu_count()/2)
+    input_folder = "test_images"
     output_folder = poc.createFolder(input_folder)
     filenames = poc.getFilenames(input_folder)
     
     params = []
     times = []
 
-    for c in range(1,os.cpu_count()+1):
+    for c in range(1,int(os.cpu_count()/2)):
         params.append([random.randint(0,100),random.randint(0,100),random.randint(0,100),c])
     
     for p in params:

@@ -6,6 +6,7 @@ import numpy as np
 from multiprocessing import Lock, Process, Queue, current_process, freeze_support
 import queue
 import json
+from sys import platform
 
 '''
 Brightness enhancement factor
@@ -95,7 +96,15 @@ def getParams():
 def createFolder(input_folder):
     output_folder = input_folder + "_output"
     if not os.path.exists(output_folder):
-        os.mkdir(output_folder)
+        print("Making output folder...")
+        if platform == "linux" or platform == "linux2":
+            try:
+                original_umask = os.umask(0)
+                os.mkdir(output_folder, mode=0o777) #chmod 777 aka full access
+            finally:
+                os.umask(original_umask)
+        elif platform == "win32":
+            os.mkdir(output_folder)
     return output_folder
 
 def testImport():
