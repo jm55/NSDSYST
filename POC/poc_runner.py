@@ -16,7 +16,7 @@ def main():
     print("Benchmarking...")
     
     #Prepare workers
-    for c in range(1, os.cpu_count()):
+    for c in range(1, os.cpu_count()+1):
         params.append([random.randint(0,100),random.randint(0,100),random.randint(0,100), c])
     
     #Run each worker one at a time
