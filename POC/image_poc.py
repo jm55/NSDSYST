@@ -97,19 +97,21 @@ def createFolder(input_folder):
     output_folder = input_folder + "_output"
     if not os.path.exists(output_folder):
         print("Making output folder...")
-        if platform == "linux" or platform == "linux2":
+        if isLinux():
             try:
                 original_umask = os.umask(0)
                 os.mkdir(output_folder, mode=0o777) #chmod 777 aka full access
             finally:
                 os.umask(original_umask)
-        elif platform == "win32":
+        else: #assumes Windows
             os.mkdir(output_folder)
     return output_folder
 
 def testImport():
     print("File Accessible!")
 
+def isLinux():
+    return platform == "linux" or platform == "linux2"
 
 def clientSide():
     input_folder = input("Enter absolute folder path containing images: ")
