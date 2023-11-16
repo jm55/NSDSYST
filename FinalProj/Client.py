@@ -7,6 +7,13 @@ from multiprocessing import Lock, Process, Queue
 import pika
 import uuid
 
+'''
+Sources:
+Queues: https://www.digitalocean.com/community/tutorials/python-multiprocessing-example
+Measuring Performance: https://docs.opencv.org/3.4/dc/d71/tutorial_py_optimization.html
+OpenCV Image to JSON: https://stackoverflow.com/a/55900422
+'''
+
 class Client():
     IP = '192.168.56.1'
     PORT = 5672

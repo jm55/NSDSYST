@@ -18,10 +18,6 @@ import pika
 from Adjustor import Adjustor
 
 '''
-Brightness enhancement factor
-Sharpness enhancement factor
-Contrast enhancement factor
-
 Sources:
 Queues: https://www.digitalocean.com/community/tutorials/python-multiprocessing-example
 Measuring Performance: https://docs.opencv.org/3.4/dc/d71/tutorial_py_optimization.html
