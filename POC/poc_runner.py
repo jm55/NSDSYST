@@ -3,16 +3,21 @@ import os
 import time
 import image_poc as poc
 
+def getCPUCount():
+    return int(os.cpu_count())
+
 def main():
     print("Image POC Runner")
-    print("CPU Count:", os.cpu_count())
+    print("CPU Count:", os.cpu_count()/2)
     input_folder = "test_images"
-    output_folder = poc.createFolder(input_folder)
-    filenames = poc.getFilenames(input_folder)
+    output_folder = poc.create_folder(input_folder)
+    filenames = poc.get_filenames(input_folder)
     
     params = []
     times = []
 
+    for c in range(1, getCPUCount()+1):
+        params.append([random.randint(0,100),random.randint(0,100),random.randint(0,100),c])
     print("Benchmarking...")
     
     #Prepare workers
