@@ -1,0 +1,15 @@
+sudo docker ps #list running
+
+#install docker
+sudo docker run -d --restart always --hostname rabbit-svr --name nsdsyst-rmq -p 15672:15672 -p 5672:5672 -e RABBITMQ_DEFAULT_USER=user -e RABBITMQ_DEFAULT_PASS=password rabbitmq:3-management
+
+sudo docker containers ls #list containers
+sudo docker image ls #list images
+
+sudo docker rm <container.id/name> #remove container
+sudo docker rmi <image.id/name>
+
+sudo docker start <id> #start containers
+sudo docker stop <id> #stop container
+
+sudo docker run -d --hostname rabbit-svr --name nsdsyst-rmq2 -p 15673:15673 -p 5673:5673 -e RABBITMQ_DEFAULT_USER=user -e RABBITMQ_DEFAULT_PASS=password rabbitmq:3-management
