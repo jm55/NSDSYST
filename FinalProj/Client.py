@@ -6,6 +6,7 @@ import cv2
 from multiprocessing import Lock, Process, Queue
 import pika
 import uuid
+import datetime
 
 '''
 Sources:
@@ -27,7 +28,7 @@ class Client():
     def connect_to_server(self):
         self.credentials = pika.PlainCredentials('rabbituser','rabbit1234')
         self.connection = pika.BlockingConnection(pika.ConnectionParameters(Client.IP, Client.PORT, Client.ROOT, self.credentials))
-        print(f"Server Credentials -[{self.credentials.username}]:[{self.credentials.password}]")
+        print(f"{datetime.datetime.now()}: Client - Credentials -[{self.credentials.username}]:[{self.credentials.password}]")
         self.channel = self.connection.channel()
         result = self.channel.queue_declare(queue='', exclusive=True)
         self.callback_queue = result.method.queue
@@ -58,7 +59,7 @@ class Client():
     
     def create_folder(self, folderpath):
         if not os.path.exists(folderpath):
-            print("Making output folder...")
+            print(f"{datetime.datetime.now()}: Client - Making Folder...")
             if platform == "linux" or platform == "linux2":
                 try:
                     original_umask = os.umask(0)
@@ -118,10 +119,15 @@ c = Client()
 location_in = "/home/kali/Documents/GitHub/NSDSYST/POC/test_images/"
 location_out = "/home/kali/Documents/GitHub/NSDSYST/FinalProj/test_images_output/"
 c.create_folder(location_out)
-filenames = c.get_filenames(location_in)[0:5]
-print("Client - Filenames:", len(filenames))
-print("Client - Parsing to files to JSON...")
+filenames = c.get_filenames(location_in)
+print(f"{datetime.datetime.now()}: Client - Input Location = {location_in}")
+print(f"{datetime.datetime.now()}: Client - Output Location = {location_out}")
+print(f"{datetime.datetime.now()}: Client - Filenames Count = ", len(filenames))
+print(f"{datetime.datetime.now()}: Client - Parsing to files to JSON...")
 jsons = c.parse_to_json(location_in, filenames, location_out+"_outputs", 10,10,10)
 for j in jsons:
-    json_body = json.loads(c.request(j))
-    cv2.imwrite(location_out+"client_"+json_body["filename"], c.json2im(json_body))
+    print(f"{datetime.datetime.now()}: Client - Sending {json.loads(j)['filename']}...")
+    response = c.request(j)
+    if response != None:
+        json_body = json.loads(response)
+        cv2.imwrite(location_out+"client_"+json_body["filename"], c.json2im(json_body))

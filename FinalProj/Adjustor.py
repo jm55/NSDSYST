@@ -4,6 +4,8 @@ import json
 import cv2
 import numpy as np
 from PIL import Image
+import pickle
+import base64
 
 '''
 Brightness enhancement factor
@@ -30,9 +32,20 @@ class Adjustor():
         """Image Sharpness Control"""
         return cv2.filter2D(image, int(sharpness*-1), np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]]))
         
+    def im2json(self, im):
+        """Convert a Numpy array to JSON string"""
+        imdata = pickle.dumps(im)
+        return base64.b64encode(imdata).decode('ascii')
+    
+    def json2im(self, json_obj:json):
+        """Convert a JSON string back to a Numpy array"""
+        imdata = base64.b64decode(json_obj['image'])
+        im = pickle.loads(imdata)
+        return im
+
     def adjust_image(self, json_obj:json):
         """Adjust Image"""
-        adj_image = self.adjust_bc(cv2.imread(json_obj['input'] + "/" + json_obj['filename']), json_obj['brightness'], json_obj['contrast'])
+        adj_image = self.adjust_bc(self.json2im(json_obj), json_obj['brightness'], json_obj['contrast'])
         adj_image = self.adjust_sharpness(adj_image, json_obj['sharpness'])
-        cv2.imwrite(json_obj['output'] + "/" + json_obj['filename'], adj_image)
+        cv2.imwrite(json_obj["output"] + json_obj['filename'], adj_image)
         return adj_image

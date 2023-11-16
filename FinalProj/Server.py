@@ -14,6 +14,7 @@ import base64
 import pickle
 from PIL import Image
 import pika
+import datetime
 
 from Adjustor import Adjustor
 
@@ -33,21 +34,20 @@ class Server():
         print("====SERVER====")
         self.a = Adjustor()
         self.pending = Queue()
-        self.finished = Queue()
         self.procs = []
         self.connect_to_server()
-        print(f"Running {os.cpu_count()} cores...")
+        print(f"{datetime.datetime.now()}: Server - Running {os.cpu_count()} cores...")
         for w in range(os.cpu_count()+1):
             p = Process(target=self.run_queue, args=())
             self.procs.append(p)
             p.start()
-        print("Listening...\n")
+        print(f"{datetime.datetime.now()}: Server - Listening...\n")
         self.channel.start_consuming()
 
     def connect_to_server(self):
         self.credentials = pika.PlainCredentials('rabbituser','rabbit1234')
         self.connection = pika.BlockingConnection(pika.ConnectionParameters(Server.IP,Server.PORT,Server.ROOT, self.credentials))
-        print(f"Server Credentials -[{self.credentials.username}]:[{self.credentials.password}]")
+        print(f"{datetime.datetime.now()}: Server - Credentials -[{self.credentials.username}]:[{self.credentials.password}]")
         self.channel = self.connection.channel()
         self.channel.basic_qos(prefetch_count=1)
         self.channel.queue_declare(queue='adjustor', durable=True)
@@ -64,14 +64,14 @@ class Server():
                 start = time.time()
                 image = self.a.adjust_image(file) #Executes actual image processing
                 end = time.time()
-                print(f'Processed: {file["filename"]} @ {end-start:0.2f}')
+                print(f'{datetime.datetime.now()}: Server - Processed {file["filename"]} @ {end-start:0.2f}')
                 file["image"] = self.im2json(image)
                 self.finished.put(file)                
 
     def on_request(self, ch, method, props, body:str):
         #2 layers of json
         json_body = json.loads(body)
-        print(f"Processing {json_body['filename']}...")
+        print(f"{datetime.datetime.now()}: Server - Processing {json_body['filename']}...")
         image = self.a.adjust_image(json_body)
         json_body["image"] = self.im2json(image)
         response = json.dumps(json_body)
