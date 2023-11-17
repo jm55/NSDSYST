@@ -16,7 +16,6 @@ print (msg_dict)
 msg_json=json.dumps(msg_dict)
 
 channel.basic_publish(exchange='logs', routing_key='', body=msg_json)
-channel.basic_get()
 
 print(" [x] Sent '%s'",(msg_dict))
 connection.close()

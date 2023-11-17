@@ -34,6 +34,7 @@ class Server():
         print("====SERVER====")
         self.a = Adjustor()
         self.pending = Queue()
+        self.finished = Queue()
         self.procs = []
         self.connect_to_server()
         print(f"{datetime.datetime.now()}: Server - Running {os.cpu_count()} cores...")
@@ -46,16 +47,17 @@ class Server():
 
     def connect_to_server(self):
         self.credentials = pika.PlainCredentials('rabbituser','rabbit1234')
-        self.connection = pika.BlockingConnection(pika.ConnectionParameters(Server.IP,Server.PORT,Server.ROOT, self.credentials))
+        self.connection = pika.BlockingConnection(pika.ConnectionParameters(Server.IP, Server.PORT, Server.ROOT, self.credentials, connection_attempts=256))
         print(f"{datetime.datetime.now()}: Server - Credentials -[{self.credentials.username}]:[{self.credentials.password}]")
         self.channel = self.connection.channel()
-        self.channel.basic_qos(prefetch_count=1)
-        self.channel.queue_declare(queue='adjustor', durable=True)
-        self.channel.basic_consume(queue='adjustor', on_message_callback=self.on_request)
+        self.channel.basic_qos(prefetch_count=4)
+        self.channel.queue_declare(queue='adjustor')
+        self.channel.basic_consume(queue='adjustor', on_message_callback=self.on_request, auto_ack=True)
 
     def run_queue(self):
         while True:
             try:
+                self.connection.process_data_events()
                 file = self.pending.get() #This will raise an exception if it is empty
                 file = json.loads(json.dumps(file))
             except queue.Empty: #Excemption raised if queue is empty. Breaks the while loop.
@@ -64,22 +66,15 @@ class Server():
                 start = time.time()
                 image = self.a.adjust_image(file) #Executes actual image processing
                 end = time.time()
-                print(f'{datetime.datetime.now()}: Server - Processed {file["filename"]} @ {end-start:0.2f}')
+                print(f'{datetime.datetime.now()}: Server - Processed {file["filename"]} @ {end-start:0.2f}, Left @ Queue = {self.pending.qsize()}')
                 file["image"] = self.im2json(image)
-                self.finished.put(file)                
+                self.finished.put(file)    
 
     def on_request(self, ch, method, props, body:str):
         #2 layers of json
         json_body = json.loads(body)
-        print(f"{datetime.datetime.now()}: Server - Processing {json_body['filename']}...")
-        image = self.a.adjust_image(json_body)
-        json_body["image"] = self.im2json(image)
-        response = json.dumps(json_body)
-        ch.basic_publish(exchange='',
-                            routing_key=props.reply_to,
-                            properties=pika.BasicProperties(correlation_id=props.correlation_id),
-                            body=response)
-        ch.basic_ack(delivery_tag=method.delivery_tag)
+        print(f"{datetime.datetime.now()}: Server - Queueing {json_body['filename']}...")
+        self.pending.put(json_body)
 
     def im2json(self, im):
         """Convert a Numpy array to JSON string"""
