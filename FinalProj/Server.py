@@ -40,7 +40,7 @@ class Server():
         self.connect_to_server()
         print(f"{datetime.datetime.now()}: Server - Running {os.cpu_count()} cores...")
         for w in range(os.cpu_count()+1):
-            p = Process(target=self.run_queue, args=())
+            p = Process(target=self.run_queue, args=(int(w),))
             self.procs.append(p)
             p.start()
         print(f"{datetime.datetime.now()}: Server - Listening...\n")
@@ -51,15 +51,15 @@ class Server():
 
     def connect_to_server(self):
         self.credentials = pika.PlainCredentials('rabbituser','rabbit1234')
-        self.connection = pika.BlockingConnection(pika.ConnectionParameters(Server.IP, Server.PORT, Server.ROOT, self.credentials, connection_attempts=256, retry_delay=1, heartbeat=600, blocked_connection_timeout=300))
+        self.connection = pika.BlockingConnection(pika.ConnectionParameters(Server.IP, Server.PORT, Server.ROOT, self.credentials, connection_attempts=128, retry_delay=1, heartbeat=600, blocked_connection_timeout=300))
         print(f"{datetime.datetime.now()}: Server - Credentials -[{self.credentials.username}]:[{self.credentials.password}]")
         self.channel = self.connection.channel()
-        self.channel.basic_qos(prefetch_count=1)
+        self.channel.basic_qos(prefetch_count=os.cpu_count())
         self.channel.exchange_declare(exchange='adjustor', exchange_type=ExchangeType.direct)
-        self.channel.queue_declare(queue='adjustor')
+        self.channel.queue_declare(queue='adjustor',durable=True,arguments={'x-max-length':100, 'x-queue-type':'quorum','message-ttl':300000})
         self.channel.basic_consume(queue='adjustor', on_message_callback=self.on_request, auto_ack=True)
 
-    def run_queue(self):
+    def run_queue(self, id:int):
         while True:
             try:
                 file = self.pending.get() #This will raise an exception if it is empty
@@ -67,10 +67,11 @@ class Server():
                 print("Queue is Empty!")
             else: #No exception has been raised, add the task completion
                 file = json.loads(json.dumps(file))
+                print(f'{datetime.datetime.now()}: Server - Thread {id} Processing {file["filename"]}...')
                 start = time.time()
                 image = self.a.adjust_image(file) #Executes actual image processing
                 end = time.time()
-                print(f'{datetime.datetime.now()}: Server - Processed {file["filename"]} @ {end-start:0.2f}')
+                print(f'{datetime.datetime.now()}: Server - Thread {id} Processed {file["filename"]} @ {end-start:0.2f}')
                 file["image"] = self.im2json(image)
                 self.finished.put(file)    
 

@@ -29,7 +29,7 @@ class Client():
     def connect_to_server(self):
         self.CLIENT_UUID = str(uuid.uuid1())
         self.credentials = pika.PlainCredentials('rabbituser','rabbit1234')
-        self.connection = pika.BlockingConnection(pika.ConnectionParameters(Client.IP, Client.PORT, Client.ROOT, self.credentials, connection_attempts=256, retry_delay=1, heartbeat=600, blocked_connection_timeout=300))
+        self.connection = pika.BlockingConnection(pika.ConnectionParameters(Client.IP, Client.PORT, Client.ROOT, self.credentials, connection_attempts=128, retry_delay=1, heartbeat=600, blocked_connection_timeout=300))
         print(f"{datetime.datetime.now()}: Client - Credentials -[{self.credentials.username}]:[{self.credentials.password}]")
         self.channel = self.connection.channel()
         self.channel.exchange_declare(exchange='adjustor', exchange_type=ExchangeType.direct)
@@ -54,7 +54,7 @@ class Client():
             properties=pika.BasicProperties(
                 #reply_to=self.callback_queue,
                 correlation_id=self.corr_id,
-                headers={'client_uid':self.CLIENT_UUID, 'item_uid':self.corr_id}
+                headers={'client_uid':self.CLIENT_UUID, 'item_uid':self.corr_id},
             ),
             body=str(json_str),
         )
@@ -119,8 +119,10 @@ class Client():
 
 # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 c = Client()
-location_in = "/home/kali/Documents/GitHub/NSDSYST/FinalProj/crops/"
-location_out = "/home/kali/Documents/GitHub/NSDSYST/FinalProj/crops_output/"
+print("NOTE: Input files limited to 2MB")
+size_limit = 5 #MB
+location_in = "/home/kali/Documents/GitHub/NSDSYST/FinalProj/tokyo/"
+location_out = location_in[0:len(location_in)-1] + "_output/"
 brightness = 10
 contrast = 10
 sharpness = 10
@@ -134,8 +136,12 @@ print(f"{datetime.datetime.now()}: Client - Parsing to files to JSON...")
 #jsons = c.parse_to_json(location_in, filenames, location_out+"_outputs", 10,10,10)
 for f in filenames:
     print(f"{datetime.datetime.now()}: Client - Sending {f}...")
-    j = c.json_generate(location_in, f, location_out, brightness, contrast, sharpness)
-    c.send(j)
+    stats = os.stat(location_in+f)
+    if (stats.st_size / (1024 * 1024)) <= size_limit:
+        j = c.json_generate(location_in, f, location_out, brightness, contrast, sharpness)
+        c.send(j)
+    else:
+        print(f"{datetime.datetime.now()}: Client - File {f} exceeds the filesize limit of {size_limit}MB!")
     # response = c.send(j)
     # if response != None:
     #     json_body = json.loads(response)
