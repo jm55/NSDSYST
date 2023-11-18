@@ -34,7 +34,7 @@ class Client():
         self.running = True # For controlling threads
         self.received = Queue() # For handling received items
         self.connect_to_server() # Prepare the communications to the server.
-        self.channel_rcv.basic_consume(queue = self.rcv_queue, on_message_callback=self.receive, auto_ack=True, exclusive=False) #Set consumer to 'listen' on rcv_queue and process received messages using receive() 
+        self.channel_rcv.basic_consume(queue = self.rcv_queue, on_message_callback=self.on_receive, auto_ack=True, exclusive=False) #Set consumer to 'listen' on rcv_queue and process received messages using receive() 
         self.consume = Process(target=self.channel_rcv.start_consuming, args=())
         print(self.print_header() + "Preparing file writers...")
         writers = []
@@ -100,6 +100,10 @@ class Client():
         self.corr_id = None
 
     def write_to_file(self, id:str):
+        '''
+        Watches the received queue to execute file writing to disk.
+        Note that this runs on a threaded manner.
+        '''
         while self.running:
             try:
                 file = self.received.get() # Get a file from the received queue
@@ -113,7 +117,8 @@ class Client():
         print(self.print_header() + f"Write_To_File Thread {id} Closed")
         return
 
-    def receive(self, ch, method, props, body:str):
+    def on_receive(self, ch, method, props, body:str):
+        '''Will execute once the consumer (channel_rcv) consumes a message from 'adjustor' Message Queue.'''
         file = json.loads(body)
         print(self.print_header() + f"{'Received:':10s} {file['filename']:30s}")
         if self.corr_id == props.correlation_id and file['client_uuid'] == self.CLIENT_UUID:
@@ -122,6 +127,7 @@ class Client():
             print(self.print_header() + "IDENTITY MISMATCH DETECTED!")
     
     def send(self, json_str:str):
+        '''Send an image & metadata to server.'''
         try:
             self.corr_id = str(uuid.uuid4()) # Correlation ID (not sure if working during receive)
             self.channel_snd.basic_publish( # Send/Publish the image to the adjustor queue of RabbitMQ to be received by the server
@@ -164,7 +170,7 @@ class Client():
         return base64.b64encode(imdata).decode('ascii')
     
     def json2im(self, json_obj:json):
-        """Convert a JSON string back to a Numpy array"""
+        """Convert a JSON string back to a Numpy array."""
         imdata = base64.b64decode(json_obj['image'])
         im = pickle.loads(imdata)
         return im
