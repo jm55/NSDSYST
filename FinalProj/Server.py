@@ -54,7 +54,7 @@ class Server():
         '''Connects the server to RabbitMQ'''
         # RabbitMQ Credentials
         self.credentials = pika.PlainCredentials('rabbituser','rabbit1234')
-        print(f"{datetime.datetime.now()}: Server - Credentials -[{self.credentials.username}]:[{self.credentials.password}]")
+        print(f"{datetime.datetime.now()}: Server - Credentials - [{self.credentials.username}]:[{self.credentials.password}]")
         # Connection Setup
         self.connection_rcv =   pika.BlockingConnection(
                                     pika.ConnectionParameters(
@@ -90,11 +90,11 @@ class Server():
                 print("Pending Queue is Empty!")
             else: # No exception has been raised, add the task completion
                 file = json.loads(json.dumps(file))
-                print(self.print_header() + f'Thread {id} Processing {file["filename"]}...')
+                print(self.print_header() + f'{"Processing:":15s} {file["filename"]:30s} Thread-{str(id):3s}')
                 start = time.time()
                 image = self.a.adjust_image(file) # Executes actual image processing
                 end = time.time()
-                print(self.print_header() + f'Thread {id} Processed {file["filename"]} @ {end-start:0.2f}s')
+                print(self.print_header() + f'{"Processed:":15s} {file["filename"]:30s} Thread-{str(id):3s} {end-start:0.2f}s')
                 file["image"] = self.im2json(image)
                 self.finished.put_nowait(file)
 
@@ -110,17 +110,17 @@ class Server():
                 print("Finished Queue is Empty!")
             else:
                 file = json.loads(json.dumps(file))
-                print(self.print_header() + f"Returning {file['filename']}...")
+                print(self.print_header() + f"{'Returning:':15s} {file['filename']:30s}")
                 self.channel_snd.basic_publish(exchange='adjustor_fin', routing_key=file["client_uuid"], body=json.dumps(file), mandatory=True)
 
     def on_request(self, ch, method, props, body:str):
         '''Will execute once the consumer (channel_rcv) consumes a message from 'adjustor' Message Queue.'''
-        json_body = json.loads(body)
-        json_body["client_uuid"] = props.headers["client_uuid"] # Attach the headers to the message
+        file = json.loads(body)
+        #json_body["client_uuid"] = props.headers["client_uuid"] # Attach the headers to the message
         #json_body["item_uid"] = props.headers["item_uid"]
-        self.pending.put_nowait(json_body) # Put requested (i.e., sent by client) image to pending queue for processing.
-        print(f"{datetime.datetime.now()}: Server - Queued {json_body['filename']}, Queue = {self.pending.qsize()}")
+        self.pending.put_nowait(file) # Put requested (i.e., sent by client) image to pending queue for processing.
         self.connection_rcv.process_data_events()
+        print(self.print_header() + f"{'Queued':15s} {file['filename']:30s} {'Remaining '+str(self.pending.qsize())}")
 
     def im2json(self, im):
         """Convert a Numpy array to JSON string"""

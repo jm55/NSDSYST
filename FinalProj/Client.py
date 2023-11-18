@@ -64,9 +64,9 @@ class Client():
     def connect_to_server(self):
         '''Connect to the server'''
         self.credentials = pika.PlainCredentials('rabbituser','rabbit1234') # RabbitMQ Account
-        print(self.print_header() + f"Credentials -[{self.credentials.username}]:[{self.credentials.password}]")
+        print(self.print_header() + f"Credentials - [{self.credentials.username}]:[{self.credentials.password}]")
         # Connect to connection to server via RabbitMQ
-        print(self.print_header() + f"Connecting (rcv & snd) to RabbitMQ...")
+        print(self.print_header() + f"Connecting (RCV & SND) to RabbitMQ...")
         self.connection_snd =   pika.BlockingConnection( # Dedicated connection for sending requests
                                     pika.ConnectionParameters(Client.IP, Client.PORT, Client.ROOT, 
                                                               self.credentials, connection_attempts=128, 
@@ -79,17 +79,17 @@ class Client():
                                                               retry_delay=1, heartbeat=600, 
                                                               blocked_connection_timeout=300)
                                 )
-        print(self.print_header() + f"Connected (rcv & snd) to RabbitMQ!")
+        print(self.print_header() + f"Connected (RCV & SND) to RabbitMQ!")
         #Count Machines
         self.channel_count = self.connection_rcv.channel()
         result = self.channel_count.queue_declare(queue='adjustor', durable=True, arguments={'x-max-length':100, 'x-queue-type':'classic','message-ttl':300000})
         self.n_machines = result.method.consumer_count
-        print(self.print_header() + f"No. of Consumers = {self.n_machines}")
+        print(self.print_header() + f"No. of Consumers Detected = {self.n_machines}")
         # Create Send & Receive Channels
-        print(self.print_header() + f"Creating Channels (rcv & snd)...")
+        print(self.print_header() + f"Creating Channels (RCV & SND)...")
         self.channel_snd = self.connection_snd.channel()
         self.channel_rcv = self.connection_rcv.channel()
-        print(self.print_header() + f"Channels Created (rcv & snd)!")
+        print(self.print_header() + f"Channels Created (RCV & SND)!")
         # Prepare Receiving Channel
         print(self.print_header() + f"Preparing Receiver...")
         self.channel_rcv.exchange_declare(exchange='adjustor_fin', exchange_type=ExchangeType.topic) # Will use Topic Exchange where the 'topic' is based if it matches the Client UUID
@@ -107,20 +107,19 @@ class Client():
                 print("Pending Queue is Empty!")
             else:
                 file = json.loads(file) # Parse the file str as JSON object and write as file.
-                #print(self.print_header() + f"Thread {id} writing {file['filename']}...")
+                print(self.print_header() + f"{'Writing:':10s} {file['filename']:30s} Thread-{id}")
                 cv2.imwrite(file['output'] + file['filename'], self.json2im(file))
-                print(self.print_header() + f"Thread {id} finished writing {file['filename']}")
+                print(self.print_header() + f"{'Written:':10s} {file['filename']:30s} Thread-{id}")
         print(self.print_header() + f"Write_To_File Thread {id} Closed")
         return
 
     def receive(self, ch, method, props, body:str):
-        json_obj = json.loads(body)
-        print(self.print_header() + f"Received {json_obj['filename']}")
-        if self.corr_id == props.correlation_id and json_obj['client_uuid'] == self.CLIENT_UUID:
-            print(self.print_header() + f"Queueing File {json_obj['filename']} for writing...")
+        file = json.loads(body)
+        print(self.print_header() + f"{'Received:':10s} {file['filename']:30s}")
+        if self.corr_id == props.correlation_id and file['client_uuid'] == self.CLIENT_UUID:
             self.received.put_nowait(body)
         else:
-            print(self.print_header() + "Identity Mismatch Detected!")
+            print(self.print_header() + "IDENTITY MISMATCH DETECTED!")
     
     def send(self, json_str:str):
         try:
@@ -263,14 +262,14 @@ class Client_Driver():
         #jsons = c.parse_to_json(location_in, filenames, location_out+"_outputs", 10,10,10)
         start = time.time()
         for f in self.filtered_filenames:
-            print(self.c.print_header() + f"Sending {f}...")
+            print(self.c.print_header() + f"{'Sending':10s} {f:30s}")
             repeat = 0
             while repeat != 10:
                 if self.c.send(self.c.json_generate(self.location_in, f, self.location_out, self.brightness, self.contrast, self.sharpness)):
                     break
         while True:
             if len(self.filtered_filenames) == len(self.get_filenames(self.location_out)):
-                print(self.c.print_header() + f"All filtered files received ({len(self.filtered_filenames)} files)")
+                print(self.c.print_header() + f"ALL PASSED FILES RECEIVED ({len(self.filtered_filenames)} files)!")
                 end = time.time()
                 print(self.c.print_header() + f"Processing Time: {end-start:0.4f}s")
                 self.write_report(end-start)
