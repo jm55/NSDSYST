@@ -5,6 +5,7 @@ import pickle, base64
 import cv2
 from multiprocessing import Lock, Process, Queue
 import pika
+from pika.exchange_type import ExchangeType
 import uuid
 import datetime, time
 
@@ -19,19 +20,21 @@ class Client():
     IP = '192.168.56.1'
     PORT = 5672
     ROOT = '/'
-    
+
     received = Queue()
     def __init__(self):
         print("====CLIENT====")
         self.connect_to_server()
 
     def connect_to_server(self):
+        self.CLIENT_UUID = str(uuid.uuid1())
         self.credentials = pika.PlainCredentials('rabbituser','rabbit1234')
-        self.connection = pika.BlockingConnection(pika.ConnectionParameters(Client.IP, Client.PORT, Client.ROOT, self.credentials, connection_attempts=1024))
+        self.connection = pika.BlockingConnection(pika.ConnectionParameters(Client.IP, Client.PORT, Client.ROOT, self.credentials, connection_attempts=256, retry_delay=1, heartbeat=600, blocked_connection_timeout=300))
         print(f"{datetime.datetime.now()}: Client - Credentials -[{self.credentials.username}]:[{self.credentials.password}]")
         self.channel = self.connection.channel()
-        result = self.channel.queue_declare(queue='', exclusive=True)
-        self.callback_queue = result.method.queue
+        self.channel.exchange_declare(exchange='adjustor', exchange_type=ExchangeType.direct)
+        # result = self.channel.queue_declare(queue='', exclusive=True)
+        # self.callback_queue = result.method.queue
         # self.channel.basic_consume(
         #     queue='adjustor',
         #     on_message_callback=self.on_response,
@@ -49,8 +52,9 @@ class Client():
             exchange='',
             routing_key='adjustor',
             properties=pika.BasicProperties(
-                reply_to=self.callback_queue,
+                #reply_to=self.callback_queue,
                 correlation_id=self.corr_id,
+                headers={'client_uid':self.CLIENT_UUID, 'item_uid':self.corr_id}
             ),
             body=str(json_str),
         )
@@ -129,7 +133,7 @@ print(f"{datetime.datetime.now()}: Client - Filenames Count = ", len(filenames))
 print(f"{datetime.datetime.now()}: Client - Parsing to files to JSON...")
 #jsons = c.parse_to_json(location_in, filenames, location_out+"_outputs", 10,10,10)
 for f in filenames:
-    print(f"{datetime.datetime.now()}: Client - Sending {f}")
+    print(f"{datetime.datetime.now()}: Client - Sending {f}...")
     j = c.json_generate(location_in, f, location_out, brightness, contrast, sharpness)
     c.send(j)
     # response = c.send(j)
