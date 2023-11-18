@@ -1,29 +1,25 @@
-import cv2
-import random
 import os
-import time
-import numpy as np
-import threading
+import time, datetime
 from multiprocessing import Lock, Process, Queue
 import queue
-import json
 from sys import platform
-import cv2
-import numpy as np
-import base64
-import pickle
+import json, base64, pickle
 from PIL import Image
 import pika
-import datetime
 from pika.exchange_type import ExchangeType
 
 from Adjustor import Adjustor
 
 '''
-Sources:
-Queues: https://www.digitalocean.com/community/tutorials/python-multiprocessing-example
-Measuring Performance: https://docs.opencv.org/3.4/dc/d71/tutorial_py_optimization.html
-OpenCV Image to JSON: https://stackoverflow.com/a/55900422
+Server.py
+
+Acts as the server-end(s) of the disributed system.
+
+SOURCES:
+Multiprocessing Queues - https://www.digitalocean.com/community/tutorials/python-multiprocessing-example
+Work Queues - https://www.rabbitmq.com/tutorials/tutorial-two-python.html
+Threaded Basic_Consumer - https://github.com/pika/pika/blob/1.0.1/examples/basic_consumer_threaded.py
+OpenCV Image to JSON - https://stackoverflow.com/a/55900422
 '''
 
 class Server():
@@ -56,8 +52,18 @@ class Server():
 
     def connect_to_server(self):
         self.credentials = pika.PlainCredentials('rabbituser','rabbit1234')
-        self.connection_rcv = pika.BlockingConnection(pika.ConnectionParameters(Server.IP, Server.PORT, Server.ROOT, self.credentials, connection_attempts=128, retry_delay=3, heartbeat=600, blocked_connection_timeout=300))
-        self.connection_snd = pika.BlockingConnection(pika.ConnectionParameters(Server.IP, Server.PORT, Server.ROOT, self.credentials, connection_attempts=128, retry_delay=3, heartbeat=600, blocked_connection_timeout=300))
+        self.connection_rcv =   pika.BlockingConnection(
+                                    pika.ConnectionParameters(
+                                        Server.IP, Server.PORT, Server.ROOT, self.credentials, 
+                                        connection_attempts=128, retry_delay=3, heartbeat=100, 
+                                        blocked_connection_timeout=300)
+                                )
+        self.connection_snd =   pika.BlockingConnection(
+                                    pika.ConnectionParameters(
+                                        Server.IP, Server.PORT, Server.ROOT, self.credentials, 
+                                        connection_attempts=128, retry_delay=3, heartbeat=100, 
+                                        blocked_connection_timeout=300)
+                                )
         print(f"{datetime.datetime.now()}: Server - Credentials -[{self.credentials.username}]:[{self.credentials.password}]")
         self.channel_rcv = self.connection_rcv.channel(1)
         self.channel_rcv.basic_qos(prefetch_count=os.cpu_count())
@@ -69,22 +75,24 @@ class Server():
         #self.channel_snd.queue_declare(queue='adjustor_fin', durable=True, arguments={'x-max-length':100, 'x-queue-type':'classic','message-ttl':300000})
 
     def run_queue(self, id:int):
+        '''Watches the pending queue to execute the image processing.'''
         while True:
             try:
-                file = self.pending.get() #This will raise an exception if it is empty
-            except queue.Empty: #Excemption raised if queue is empty. Breaks the while loop.
+                file = self.pending.get() # This will raise an exception if it is empty
+            except queue.Empty: # Excemption raised if queue is empty. Breaks the while loop.
                 print("Pending Queue is Empty!")
-            else: #No exception has been raised, add the task completion
+            else: # No exception has been raised, add the task completion
                 file = json.loads(json.dumps(file))
                 print(self.print_header() + f'Thread {id} Processing {file["filename"]}...')
                 start = time.time()
-                image = self.a.adjust_image(file) #Executes actual image processing
+                image = self.a.adjust_image(file) # Executes actual image processing
                 end = time.time()
                 print(self.print_header() + f'Thread {id} Processed {file["filename"]} @ {end-start:0.2f}s')
                 file["image"] = self.im2json(image)
-                self.finished.put(file)
+                self.finished.put_nowait(file)
 
     def run_deliver(self):
+        '''Watches the finished queue to deliver the finished products to respective users (via Client UUID)'''
         while True:
             try:
                 file = self.finished.get()
@@ -92,15 +100,14 @@ class Server():
                 print("Finished Queue is Empty!")
             else:
                 file = json.loads(json.dumps(file))
-                json_str = json.dumps(file)
                 print(self.print_header() + f"Returning {file['filename']}...")
-                self.channel_snd.basic_publish(exchange='adjustor_fin', routing_key=file["client_uid"], body=json_str, mandatory=True)
+                self.channel_snd.basic_publish(exchange='adjustor_fin', routing_key=file["client_uid"], body=json.dumps(file))
 
     def on_request(self, ch, method, props, body:str):
         json_body = json.loads(body)
         json_body["client_uid"] = props.headers["client_uid"]
-        json_body["item_uid"] = props.headers["item_uid"]
-        self.pending.put_nowait(json_body)
+        #json_body["item_uid"] = props.headers["item_uid"]
+        self.pending.put_nowait(json_body) # Put requested (i.e., sent by client) image to pending queue for processing.
         print(f"{datetime.datetime.now()}: Server - Queued {json_body['filename']}, Queue = {self.pending.qsize()}")
         self.connection_rcv.process_data_events()
 

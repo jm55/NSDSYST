@@ -1,14 +1,12 @@
-import json
 import os
-from sys import platform
-import pickle, base64
 import cv2
+from sys import platform
+import json, uuid, pickle, base64
 from multiprocessing import Lock, Process, Queue
 import queue
 import pika
 from pika.exchange_type import ExchangeType
 from pika.exceptions import ChannelWrongStateError, ChannelClosedByBroker
-import uuid
 import datetime, time
 
 '''
@@ -16,12 +14,13 @@ Client.py
 
 Acts as the client-end of the disributed system.
 
-Sources:
-Exchange Types: https://www.rabbitmq.com/tutorials/amqp-concepts.html
-Exchange Types: https://www.cloudamqp.com/blog/part4-rabbitmq-for-beginners-exchanges-routing-keys-bindings.html
-Topic Exchange: https://www.cloudamqp.com/blog/rabbitmq-topic-exchange-explained.html
-Topic Exchange: https://www.rabbitmq.com/tutorials/tutorial-five-python.html
-Queues: https://www.digitalocean.com/community/tutorials/python-multiprocessing-example
+SOURCES:
+Exchange Types - https://www.rabbitmq.com/tutorials/amqp-concepts.html
+Exchange Types - https://www.cloudamqp.com/blog/part4-rabbitmq-for-beginners-exchanges-routing-keys-bindings.html
+Topic Exchange - https://www.cloudamqp.com/blog/rabbitmq-topic-exchange-explained.html
+Topic Exchange - https://www.rabbitmq.com/tutorials/tutorial-five-python.html
+Multiprocessing Queues - https://www.digitalocean.com/community/tutorials/python-multiprocessing-example
+OpenCV Image to JSON - https://stackoverflow.com/a/55900422
 '''
 
 class Client():
@@ -31,21 +30,16 @@ class Client():
 
     def __init__(self):
         print("====CLIENT====")
-        
         self.running = True
-
         self.received = Queue()
-
         self.connect_to_server() # Prepare the communications to the server.
-
         # Prepare the consumer component of the Client.
-        self.channel_rcv.basic_consume(queue = self.rcv_queue, on_message_callback=self.receive, auto_ack=True, exclusive=True)
+        self.channel_rcv.basic_consume(queue = self.rcv_queue, on_message_callback=self.receive, auto_ack=True, exclusive=True) #Set consumer to 'listen' on rcv_queue and process received messages using receive() 
         self.consume = Process(target=self.channel_rcv.start_consuming, args=())
-        
         # Prepare file writers
         print(self.print_header() + "Preparing file writers...")
         writers = []
-        for i in range(int(os.cpu_count()/2)):
+        for i in range(2):
             writers.append(Process(target=self.write_to_file, args=(i,)))
         for i in range(len(writers)):
             writers[i].start()
@@ -58,8 +52,10 @@ class Client():
 
     def stop_consuming(self):
         '''Stops the consumption of processed images.'''
-        self.consume.join()
         self.channel_rcv.stop_consuming()
+        self.running=False
+        self.consume.join()
+        
 
     def print_header(self):
         '''Miscellaneous function for printing'''
@@ -88,7 +84,13 @@ class Client():
                                                               blocked_connection_timeout=300)
                                 )
         print(self.print_header() + f"Connected (rcv & snd) to RabbitMQ!")
-        
+
+        #Count Machines
+        self.channel_count = self.connection_rcv.channel()
+        result = self.channel_count.queue_declare(queue='adjustor', durable=True, arguments={'x-max-length':100, 'x-queue-type':'classic','message-ttl':300000})
+        self.n_machines = result.method.consumer_count
+        print(self.print_header() + f"No. of Consumers = {self.n_machines}")
+
         # Create Channels
         print(self.print_header() + f"Creating Channels (rcv & snd)...")
         self.channel_snd = self.connection_snd.channel()
@@ -100,7 +102,7 @@ class Client():
         self.channel_rcv.exchange_declare(exchange='adjustor_fin', exchange_type=ExchangeType.topic) # Will use Topic Exchange where the 'topic' is based if it matches the Client UUID
         result = self.channel_rcv.queue_declare(queue='', exclusive=True)
         self.rcv_queue = result.method.queue
-        self.channel_rcv.queue_bind(exchange='adjustor_fin', queue=self.rcv_queue, routing_key=self.CLIENT_UUID)
+        self.channel_rcv.queue_bind(exchange='adjustor_fin', queue=self.rcv_queue, routing_key=self.CLIENT_UUID) # Binds the rcv_queue to the exchange from server (i.e., all messages that routing_key==CLIENT_UUID will enter here)
         print(self.print_header() + f"Receiver Prepared!")
         self.response = None
         self.corr_id = None
@@ -108,53 +110,109 @@ class Client():
     def write_to_file(self, id:str):
         while self.running:
             try:
-                file = self.received.get() #This will raise an exception if it is empty
-            except queue.Empty: #Excemption raised if queue is empty. Breaks the while loop.
+                file = self.received.get() # Get a file from the received queue
+            except queue.Empty: # Excemption raised if queue is empty.
                 print("Pending Queue is Empty!")
-            else: #No exception has been raised, add the task completion
-                file = json.loads(file)
-                print(self.print_header() + f"Thread {id} writing {file['filename']}...")
+            else:
+                file = json.loads(file) # Parse the file str as JSON object and write as file.
+                #print(self.print_header() + f"Thread {id} writing {file['filename']}...")
                 cv2.imwrite(file['output'] + file['filename'], self.json2im(file))
-                print(self.print_header() + f"Thread {id} finsihed writing {file['filename']}")
+                print(self.print_header() + f"Thread {id} finished writing {file['filename']}")
+        print(self.print_header() + f"Write_To_File Thread {id} Closed")
+        return
 
     def receive(self, ch, method, props, body:str):
         json_obj = json.loads(body)
         print(self.print_header() + f"Received {json_obj['filename']}")
         if self.corr_id == props.correlation_id and json_obj['client_uid'] == self.CLIENT_UUID:
             print(self.print_header() + f"Queueing File {json_obj['filename']} for writing...")
-            self.received.put(body)
+            self.received.put_nowait(body)
         else:
             print(self.print_header() + "Identity Mismatch Detected!")
     
     def send(self, json_str:str):
         try:
-            self.corr_id = str(uuid.uuid4())
-            self.channel_snd.basic_publish(
+            self.corr_id = str(uuid.uuid4()) # Correlation ID (not sure if working during receive)
+            self.channel_snd.basic_publish( # Send/Publish the image to the adjustor queue of RabbitMQ to be received by the server
                 exchange='',
                 routing_key='adjustor',
                 properties=pika.BasicProperties(
                     #reply_to=self.callback_queue,
                     correlation_id=self.corr_id,
-                    headers={'client_uid':self.CLIENT_UUID, 'item_uid':self.corr_id},
+                    headers={'client_uid':self.CLIENT_UUID}, #'item_uid':self.corr_id},
                 ),
-                body=str(json_str),
-                mandatory=True
+                body=json_str,
             )
             self.connection_snd.process_data_events()
             return True
         except ChannelWrongStateError as e:
             print(self.print_header(), e.with_traceback(None))
             print(self.print_header() + f"Restarting Connection & Channel...")
-            self.connection_snd = pika.BlockingConnection(pika.ConnectionParameters(Client.IP, Client.PORT, Client.ROOT, self.credentials, connection_attempts=128, retry_delay=1, heartbeat=600, blocked_connection_timeout=300))
+            self.connection_snd =   pika.BlockingConnection(
+                                        pika.ConnectionParameters(Client.IP, Client.PORT, Client.ROOT, self.credentials, 
+                                                                connection_attempts=128, retry_delay=1, heartbeat=100, 
+                                                                blocked_connection_timeout=300)
+                                    )
             self.channel_snd = self.connection_snd.channel()
             return False
         except ChannelClosedByBroker as e:
             print(self.print_header(), e.with_traceback(None))
             print(self.print_header() + f"Restarting Connection & Channel...")
-            self.connection_snd = pika.BlockingConnection(pika.ConnectionParameters(Client.IP, Client.PORT, Client.ROOT, self.credentials, connection_attempts=128, retry_delay=1, heartbeat=600, blocked_connection_timeout=300))
+            self.connection_snd =   pika.BlockingConnection(
+                                        pika.ConnectionParameters(Client.IP, Client.PORT, Client.ROOT, self.credentials, 
+                                                                connection_attempts=128, retry_delay=1, heartbeat=100, 
+                                                                blocked_connection_timeout=300)
+                                    )
             self.channel_snd = self.connection_snd.channel()
             return False
+    
+    def im2json(self, im):
+        """Convert a Numpy array to JSON string"""
+        imdata = pickle.dumps(im)
+        return base64.b64encode(imdata).decode('ascii')
+    
+    def json2im(self, json_obj:json):
+        """Convert a JSON string back to a Numpy array"""
+        imdata = base64.b64decode(json_obj['image'])
+        im = pickle.loads(imdata)
+        return im
+        
+    def json_generate(self, input_folder, filename:str, output_folder, brightness, contrast, sharpness):
+        '''JSONify the inputs and the image object itself'''
+        im = cv2.imread(input_folder+filename)
+        return json.dumps({'input':input_folder, 'filename':filename, 'output':output_folder,'brightness':brightness,'contrast':contrast,'sharpness':sharpness,'image':self.im2json(im)})
 
+class Client_Driver():
+    def __init__(self, auto:bool=False, auto_params:list=None):
+        self.auto = auto
+        self.auto_params = auto_params
+        self.main()
+
+    def menu(self):
+        self.location_in = input("Enter input folder path (include last /): ")
+        if self.location_in[len(self.location_in)-1] != "/":
+            self.location_in += "/"
+        self.location_out = input("Enter output folder path (include last /): ")
+        if self.location_out[len(self.location_in)-1] != "/":
+            self.location_out += "/"
+        self.brightness = 0
+        self.contrast = 0
+        self.sharpness = 0
+        try:
+            self.brightness = int(input("Input Brightness Value (1-100): "))
+            self.contrast = int(input("Enter Contrast Value (1-100): "))
+            self.sharpness = int(input("Enter Sharpness Value (1-10): "))
+        except:
+            print("Input Parsing Error!\nExiting...")
+            exit(1)
+        return self.location_in, self.location_out, self.brightness, self.contrast, self.sharpness
+
+    def get_var(self):
+        return "", "", 0, 0, 0
+    
+    def get_filenames(self, folder_path):
+        return os.listdir(folder_path)
+    
     def create_folder(self, folderpath):
         if not os.path.exists(folderpath):
             print(self.print_header() + f"Making Folder...")
@@ -167,83 +225,10 @@ class Client():
             elif platform == "win32":
                 os.mkdir(folderpath)
         return folderpath
-    
-    def get_inputs(self):
-        input_folder = input("Enter absolute folder path containing images: ")
-        output_folder = self.create_folder(input_folder)
-        filenames = self.get_filenames(input_folder)
-        parameters = self.get_params()    
-        return [input_folder, output_folder, filenames, parameters]
-    
-    def get_filenames(self, folder_path):
-        return os.listdir(folder_path)
-    
-    def get_params(self):
-        brightness = float(input("Enter brightness value (0 - 100): "))
-        if brightness > 100: brightness = 100
-        if brightness < 0: brightness = 0
-        contrast = float(input("Enter contrast value (0 - 100): "))
-        if contrast > 100: contrast = 100
-        if contrast < 0: contrast = 0
-        sharpness = float(input("Enter sharpness value (0 - 100): "))
-        if sharpness > 100: sharpness = 100
-        if sharpness < 0: sharpness = 0
-        return [brightness, contrast, sharpness]
-    
-    def im2json(self, im):
-        """Convert a Numpy array to JSON string"""
-        imdata = pickle.dumps(im)
-        return base64.b64encode(imdata).decode('ascii')
-    
-    def json2im(self, json_obj:json):
-        """Convert a JSON string back to a Numpy array"""
-        imdata = base64.b64decode(json_obj['image'])
-        im = pickle.loads(imdata)
-        return im
-    
-    def parse_to_json(self, input_folder, filenames:list, output_folder, brightness, contrast, sharpness):
-        jsons = []
-        for f in filenames:
-            #print(f"Processing {f}...")
-            jsons.append(self.json_generate(input_folder, f, output_folder, brightness, contrast, sharpness))
-        return jsons
-    
-    def json_generate(self, input_folder, filename:str, output_folder, brightness, contrast, sharpness):
-        im = cv2.imread(input_folder+filename)
-        return json.dumps({'input':input_folder, 'filename':filename, 'output':output_folder,'brightness':brightness,'contrast':contrast,'sharpness':sharpness,'image':self.im2json(im)})
-
-
-class Client_Driver():
-    def __init__(self, auto:bool=False, auto_params:list=None):
-        self.auto = auto
-        self.auto_params = auto_params
-        self.main()
-
-    def menu(self):
-        location_in = input("Enter folder path (include last /): ")
-        if location_in[len(location_in)] != "/":
-            location_in += "/"
-        location_out = input("Enter folder path (include last /): ")
-        if location_out[len(location_in)] != "/":
-            location_out += "/"
-        brightness = 0
-        contrast = 0
-        sharpness = 0
-        try:
-            brightness = int(input("Input Brightness Value (1-100): "))
-            contrast = int(input("Enter Contrast Value (1-100): "))
-            sharpness = int(input("Enter Sharpness Value (1-10): "))
-        except:
-            print("Input Parsing Error!\nExiting...")
-            exit(1)
-        return location_in, location_out, brightness, contrast, sharpness
-
-    def get_var(self):
-        return "", "", 0, 0, 0
 
     def prepare_data(self, c:Client, location_in:str, location_out:str):
-        c.create_folder(location_out)
-        filenames = c.get_filenames(location_in)
+        self.create_folder(location_out)
+        filenames = self.get_filenames(location_in)
         filenames.sort()
         for f in filenames:
             try:
@@ -268,40 +253,54 @@ class Client_Driver():
             os.system('clear')
         elif platform == "win32":
             os.system('cls')
-        c = Client()
+        self.c = Client()
         print("NOTE: Input files limited to 2MB")
         self.size_limit = 5 #MB
-        location_in, location_out, brightness, contrast, sharpness = self.get_var()
+        self.location_in, self.location_out, self.brightness, self.contrast, self.sharpness = self.get_var()
         if self.auto:
-            location_in = auto_params[0]
-            location_out = location_in[0:len(location_in)-1] + "_output/"
-            brightness = auto_params[1]
-            contrast = auto_params[2]
-            sharpness = auto_params[3]
+            self.location_in = auto_params[0]
+            self.location_out = self.location_in[0:len(self.location_in)-1] + "_output/"
+            self.brightness = auto_params[1]
+            self.contrast = auto_params[2]
+            self.sharpness = auto_params[3]
         else:
-            location_in, location_out, brightness, contrast, sharpness = self.menu()
-        filtered_filenames = self.prepare_data(c, location_in, location_out)
-        print(c.print_header() + f"Parsing to files to JSON...")
+            self.menu()
+        self.filtered_filenames = self.prepare_data(self.c, self.location_in, self.location_out)
+        print(self.c.print_header() + f"Parsing to files to JSON...")
         #jsons = c.parse_to_json(location_in, filenames, location_out+"_outputs", 10,10,10)
         start = time.time()
-        for f in filtered_filenames:
-            print(c.print_header() + f"Sending {f}...")
+        for f in self.filtered_filenames:
+            print(self.c.print_header() + f"Sending {f}...")
             repeat = 0
             while repeat != 10:
-                if c.send(c.json_generate(location_in, f, location_out, brightness, contrast, sharpness)):
+                if self.c.send(self.c.json_generate(self.location_in, f, self.location_out, self.brightness, self.contrast, self.sharpness)):
                     break
         while True:
-            if len(filtered_filenames) == len(c.get_filenames(location_out)):
-                print(c.print_header() + f"All filtered files received ({len(filtered_filenames)} files)")
+            if len(self.filtered_filenames) == len(self.get_filenames(self.location_out)):
+                print(self.c.print_header() + f"All filtered files received ({len(self.filtered_filenames)} files)")
                 end = time.time()
+                print(f"Processing Time: {end-start:0.4f}s")
+                self.write_report(end-start)
                 break
-        print(c.print_header() + f"Closing connections...")
-        c.connection_snd.close()
-        c.connection_rcv.close()
-        print(c.print_header() + f"Connections closed!")
-        print(f"Processing Time: {end-start:0.4f}s")
-        c.running = False
+        print(self.c.print_header() + f"Stopping consumption...")
+        self.c.stop_consuming()
+        print(self.c.print_header() + f"Closing connections...")
+        self.c.connection_snd.close()
+        self.c.connection_rcv.close()
+        print(self.c.print_header() + f"Connections closed!")
         return
+
+    def write_report(self, elapsed:float):
+        '''Prints a text file containing # of images processed, time elapsed, no. of machines used'''
+        filename = str(datetime.datetime.now()).replace(':','').replace('.','').replace(' ','_')+".txt"
+        with open(filename,'w') as f:
+            f.write(f"Input Path: {self.location_in}\n")
+            f.write(f"Output Path: {self.location_out}\n")
+            f.write(f"Input File Count (File sizes <= {self.size_limit}): {len(self.filtered_filenames)}\n")
+            f.write(f"Input File Count (File sizes <= {self.size_limit}): {len(self.get_filenames(self.location_out))}\n")
+            f.write(f"Time Elapsed: {elapsed:0.4f}s\n")
+            f.write(f"No. of Machines: {self.c.n_machines}\n")
+            f.close()
 
     def main(self):
         while True:
@@ -316,10 +315,11 @@ class Client_Driver():
                         self.runtime()
                 if run_auto != '' and run_auto == 'n':
                     self.auto = False
+                    self.runtime()
             if run == 'q':
                 break
         exit(0)
 
 if __name__ == '__main__':
-    auto_params = ["/home/kali/Documents/GitHub/NSDSYST/FinalProj/tokyo/", 10, 10, 10]
+    auto_params = ["/home/kali/Documents/GitHub/NSDSYST/FinalProj/crops/", 10, 10, 10]
     Client_Driver(True, auto_params)

@@ -8,14 +8,14 @@ import pickle
 import base64
 
 '''
-Brightness enhancement factor
-Sharpness enhancement factor
-Contrast enhancement factor
+Adjustor.py
 
-Sources:
-Brightness & Contrast: https://www.tutorialspoint.com/how-to-change-the-contrast-and-brightness-of-an-image-using-opencv-in-python
-Sharpness: https://www.opencvhelp.org/tutorials/image-processing/how-to-sharpen-image/
-Save Image: https://www.geeksforgeeks.org/python-opencv-cv2-imwrite-method/
+Contains adjustments for: Brightness, Contrast, and Sharpness
+
+SOURCES:
+Brightness & Contrast - https://www.tutorialspoint.com/how-to-change-the-contrast-and-brightness-of-an-image-using-opencv-in-python
+Sharpness - https://www.opencvhelp.org/tutorials/image-processing/how-to-sharpen-image/
+Save Image - https://www.geeksforgeeks.org/python-opencv-cv2-imwrite-method/
 '''
 
 class Adjustor():
