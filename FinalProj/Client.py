@@ -30,19 +30,19 @@ class Client():
 
     def __init__(self):
         print("====CLIENT====")
-        self.running = True
-        self.received = Queue()
+        self.CLIENT_UUID = str(uuid.uuid1()) # Client UUID
+        self.running = True # For controlling threads
+        self.received = Queue() # For handling received items
         self.connect_to_server() # Prepare the communications to the server.
-        self.channel_rcv.basic_consume(queue = self.rcv_queue, on_message_callback=self.receive, auto_ack=True, exclusive=False) #Set consumer to 'listen' on rcv_queue and process received messages using receive() 
+        self.channel_rcv.basic_consume(queue = self.rcv_queue, on_message_callback=self.on_receive, auto_ack=True, exclusive=False) #Set consumer to 'listen' on rcv_queue and process received messages using receive() 
         self.consume = Process(target=self.channel_rcv.start_consuming, args=())
-        # Prepare file writers
         print(self.print_header() + "Preparing file writers...")
         writers = []
-        for i in range(2):
+        for i in range(2): # At least 2 threads for simultaneous file writing of received files
             writers.append(Process(target=self.write_to_file, args=(i,)))
         for i in range(len(writers)):
             writers[i].start()
-        print(self.print_header() + "File writer prepared!")
+        print(self.print_header() + "File writers prepared!")
         self.start_consuming()
 
     def start_consuming(self):
@@ -63,14 +63,10 @@ class Client():
 
     def connect_to_server(self):
         '''Connect to the server'''
-
-        self.CLIENT_UUID = str(uuid.uuid1()) # Client UUID
-        
         self.credentials = pika.PlainCredentials('rabbituser','rabbit1234') # RabbitMQ Account
-        print(self.print_header() + f"Credentials -[{self.credentials.username}]:[{self.credentials.password}]")
-        
-        # Create to Server
-        print(self.print_header() + f"Connecting (rcv & snd) to RabbitMQ...")
+        print(self.print_header() + f"Credentials - [{self.credentials.username}]:[{self.credentials.password}]")
+        # Connect to connection to server via RabbitMQ
+        print(self.print_header() + f"Connecting (RCV & SND) to RabbitMQ...")
         self.connection_snd =   pika.BlockingConnection( # Dedicated connection for sending requests
                                     pika.ConnectionParameters(Client.IP, Client.PORT, Client.ROOT, 
                                                               self.credentials, connection_attempts=128, 
@@ -83,31 +79,31 @@ class Client():
                                                               retry_delay=1, heartbeat=600, 
                                                               blocked_connection_timeout=300)
                                 )
-        print(self.print_header() + f"Connected (rcv & snd) to RabbitMQ!")
-
+        print(self.print_header() + f"Connected (RCV & SND) to RabbitMQ!")
         #Count Machines
         self.channel_count = self.connection_rcv.channel()
         result = self.channel_count.queue_declare(queue='adjustor', durable=True, arguments={'x-max-length':100, 'x-queue-type':'classic','message-ttl':300000})
         self.n_machines = result.method.consumer_count
-        print(self.print_header() + f"No. of Consumers = {self.n_machines}")
-
-        # Create Channels
-        print(self.print_header() + f"Creating Channels (rcv & snd)...")
+        print(self.print_header() + f"No. of Consumers Detected = {self.n_machines}")
+        # Create Send & Receive Channels
+        print(self.print_header() + f"Creating Channels (RCV & SND)...")
         self.channel_snd = self.connection_snd.channel()
         self.channel_rcv = self.connection_rcv.channel()
-        print(self.print_header() + f"Channels Created (rcv & snd)!")
-        
-        # Prepare Client's receiver
+        print(self.print_header() + f"Channels Created (RCV & SND)!")
+        # Prepare Receiving Channel
         print(self.print_header() + f"Preparing Receiver...")
         self.channel_rcv.exchange_declare(exchange='adjustor_fin', exchange_type=ExchangeType.topic) # Will use Topic Exchange where the 'topic' is based if it matches the Client UUID
         result = self.channel_rcv.queue_declare(queue='', exclusive=True)
         self.rcv_queue = result.method.queue
         self.channel_rcv.queue_bind(exchange='adjustor_fin', queue=self.rcv_queue, routing_key=self.CLIENT_UUID) # Binds the rcv_queue to the exchange from server (i.e., all messages that routing_key==CLIENT_UUID will enter here)
         print(self.print_header() + f"Receiver Prepared!")
-        self.response = None
         self.corr_id = None
 
     def write_to_file(self, id:str):
+        '''
+        Watches the received queue to execute file writing to disk.
+        Note that this runs on a threaded manner.
+        '''
         while self.running:
             try:
                 file = self.received.get() # Get a file from the received queue
@@ -115,22 +111,23 @@ class Client():
                 print("Pending Queue is Empty!")
             else:
                 file = json.loads(file) # Parse the file str as JSON object and write as file.
-                #print(self.print_header() + f"Thread {id} writing {file['filename']}...")
+                print(self.print_header() + f"{'Writing:':10s} {file['filename']:30s} Thread-{id}")
                 cv2.imwrite(file['output'] + file['filename'], self.json2im(file))
-                print(self.print_header() + f"Thread {id} finished writing {file['filename']}")
+                print(self.print_header() + f"{'Written:':10s} {file['filename']:30s} Thread-{id}")
         print(self.print_header() + f"Write_To_File Thread {id} Closed")
         return
 
-    def receive(self, ch, method, props, body:str):
-        json_obj = json.loads(body)
-        print(self.print_header() + f"Received {json_obj['filename']}")
-        if self.corr_id == props.correlation_id and json_obj['client_uid'] == self.CLIENT_UUID:
-            print(self.print_header() + f"Queueing File {json_obj['filename']} for writing...")
+    def on_receive(self, ch, method, props, body:str):
+        '''Will execute once the consumer (channel_rcv) consumes a message from 'adjustor' Message Queue.'''
+        file = json.loads(body)
+        print(self.print_header() + f"{'Received:':10s} {file['filename']:30s}")
+        if self.corr_id == props.correlation_id and file['client_uuid'] == self.CLIENT_UUID:
             self.received.put_nowait(body)
         else:
-            print(self.print_header() + "Identity Mismatch Detected!")
+            print(self.print_header() + "IDENTITY MISMATCH DETECTED!")
     
     def send(self, json_str:str):
+        '''Send an image & metadata to server.'''
         try:
             self.corr_id = str(uuid.uuid4()) # Correlation ID (not sure if working during receive)
             self.channel_snd.basic_publish( # Send/Publish the image to the adjustor queue of RabbitMQ to be received by the server
@@ -139,7 +136,7 @@ class Client():
                 properties=pika.BasicProperties(
                     #reply_to=self.callback_queue,
                     correlation_id=self.corr_id,
-                    headers={'client_uid':self.CLIENT_UUID}, #'item_uid':self.corr_id},
+                    #headers={'client_uuid':self.CLIENT_UUID}, #'item_uid':self.corr_id},
                 ),
                 body=json_str,
                 mandatory=True
@@ -173,7 +170,7 @@ class Client():
         return base64.b64encode(imdata).decode('ascii')
     
     def json2im(self, json_obj:json):
-        """Convert a JSON string back to a Numpy array"""
+        """Convert a JSON string back to a Numpy array."""
         imdata = base64.b64decode(json_obj['image'])
         im = pickle.loads(imdata)
         return im
@@ -181,7 +178,7 @@ class Client():
     def json_generate(self, input_folder, filename:str, output_folder, brightness, contrast, sharpness):
         '''JSONify the inputs and the image object itself'''
         im = cv2.imread(input_folder+filename)
-        return json.dumps({'input':input_folder, 'filename':filename, 'output':output_folder,'brightness':brightness,'contrast':contrast,'sharpness':sharpness,'image':self.im2json(im)})
+        return json.dumps({'input':input_folder, 'filename':filename, 'output':output_folder,'brightness':brightness,'contrast':contrast,'sharpness':sharpness,'image':self.im2json(im),'client_uuid':self.CLIENT_UUID})
 
 class Client_Driver():
     def __init__(self, auto:bool=False, auto_params:list=None):
@@ -271,14 +268,14 @@ class Client_Driver():
         #jsons = c.parse_to_json(location_in, filenames, location_out+"_outputs", 10,10,10)
         start = time.time()
         for f in self.filtered_filenames:
-            print(self.c.print_header() + f"Sending {f}...")
+            print(self.c.print_header() + f"{'Sending':10s} {f:30s}")
             repeat = 0
             while repeat != 10:
                 if self.c.send(self.c.json_generate(self.location_in, f, self.location_out, self.brightness, self.contrast, self.sharpness)):
                     break
         while True:
             if len(self.filtered_filenames) == len(self.get_filenames(self.location_out)):
-                print(self.c.print_header() + f"All filtered files received ({len(self.filtered_filenames)} files)")
+                print(self.c.print_header() + f"ALL PASSED FILES RECEIVED ({len(self.filtered_filenames)} files)!")
                 end = time.time()
                 print(self.c.print_header() + f"Processing Time: {end-start:0.4f}s")
                 self.write_report(end-start)
