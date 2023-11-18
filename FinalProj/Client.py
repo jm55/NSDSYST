@@ -33,8 +33,7 @@ class Client():
         self.running = True
         self.received = Queue()
         self.connect_to_server() # Prepare the communications to the server.
-        # Prepare the consumer component of the Client.
-        self.channel_rcv.basic_consume(queue = self.rcv_queue, on_message_callback=self.receive, auto_ack=True, exclusive=True) #Set consumer to 'listen' on rcv_queue and process received messages using receive() 
+        self.channel_rcv.basic_consume(queue = self.rcv_queue, on_message_callback=self.receive, auto_ack=True, exclusive=False) #Set consumer to 'listen' on rcv_queue and process received messages using receive() 
         self.consume = Process(target=self.channel_rcv.start_consuming, args=())
         # Prepare file writers
         print(self.print_header() + "Preparing file writers...")
@@ -43,7 +42,7 @@ class Client():
             writers.append(Process(target=self.write_to_file, args=(i,)))
         for i in range(len(writers)):
             writers[i].start()
-        print(self.print_header() + "File prepared!")
+        print(self.print_header() + "File writer prepared!")
         self.start_consuming()
 
     def start_consuming(self):
@@ -52,10 +51,11 @@ class Client():
 
     def stop_consuming(self):
         '''Stops the consumption of processed images.'''
-        self.channel_rcv.stop_consuming()
         self.running=False
-        self.consume.join()
-        
+        self.channel_rcv.stop_consuming()
+        self.channel_rcv.close()
+        self.channel_snd.close()
+        self.consume.kill()
 
     def print_header(self):
         '''Miscellaneous function for printing'''
@@ -142,6 +142,7 @@ class Client():
                     headers={'client_uid':self.CLIENT_UUID}, #'item_uid':self.corr_id},
                 ),
                 body=json_str,
+                mandatory=True
             )
             self.connection_snd.process_data_events()
             return True
@@ -215,7 +216,7 @@ class Client_Driver():
     
     def create_folder(self, folderpath):
         if not os.path.exists(folderpath):
-            print(self.print_header() + f"Making Folder...")
+            print(self.c.print_header() + f"Making Folder...")
             if platform == "linux" or platform == "linux2":
                 try:
                     original_umask = os.umask(0)
@@ -226,21 +227,21 @@ class Client_Driver():
                 os.mkdir(folderpath)
         return folderpath
 
-    def prepare_data(self, c:Client, location_in:str, location_out:str):
-        self.create_folder(location_out)
-        filenames = self.get_filenames(location_in)
+    def prepare_data(self, c:Client):
+        self.create_folder(self.location_out)
+        filenames = self.get_filenames(self.location_in)
         filenames.sort()
         for f in filenames:
             try:
-                os.remove(location_out + f)
+                os.remove(self.location_out + f)
             except:
-                print(c.print_header() + f"File {location_out + f} does not exist.")
-        print(c.print_header() + f"Input Location = {location_in}")
-        print(c.print_header() + f"Output Location = {location_out}")
+                print(c.print_header() + f"File {self.location_out + f} does not exist.")
+        print(c.print_header() + f"Input Location = {self.location_in}")
+        print(c.print_header() + f"Output Location = {self.location_out}")
         print(c.print_header() + f"Files Count = ", len(filenames))
         filtered_filenames = []
         for f in filenames:
-            stats = os.stat(location_in+f)
+            stats = os.stat(self.location_in+f)
             if (stats.st_size / (1024 * 1024)) <= self.size_limit:
                 filtered_filenames.append(f)
             else:
@@ -254,8 +255,8 @@ class Client_Driver():
         elif platform == "win32":
             os.system('cls')
         self.c = Client()
-        print("NOTE: Input files limited to 2MB")
         self.size_limit = 5 #MB
+        print(f"NOTE: Input files limited to {self.size_limit}MB")
         self.location_in, self.location_out, self.brightness, self.contrast, self.sharpness = self.get_var()
         if self.auto:
             self.location_in = auto_params[0]
@@ -265,7 +266,7 @@ class Client_Driver():
             self.sharpness = auto_params[3]
         else:
             self.menu()
-        self.filtered_filenames = self.prepare_data(self.c, self.location_in, self.location_out)
+        self.filtered_filenames = self.prepare_data(self.c)
         print(self.c.print_header() + f"Parsing to files to JSON...")
         #jsons = c.parse_to_json(location_in, filenames, location_out+"_outputs", 10,10,10)
         start = time.time()
@@ -279,16 +280,10 @@ class Client_Driver():
             if len(self.filtered_filenames) == len(self.get_filenames(self.location_out)):
                 print(self.c.print_header() + f"All filtered files received ({len(self.filtered_filenames)} files)")
                 end = time.time()
-                print(f"Processing Time: {end-start:0.4f}s")
+                print(self.c.print_header() + f"Processing Time: {end-start:0.4f}s")
                 self.write_report(end-start)
                 break
-        print(self.c.print_header() + f"Stopping consumption...")
-        self.c.stop_consuming()
-        print(self.c.print_header() + f"Closing connections...")
-        self.c.connection_snd.close()
-        self.c.connection_rcv.close()
-        print(self.c.print_header() + f"Connections closed!")
-        return
+        exit(0)
 
     def write_report(self, elapsed:float):
         '''Prints a text file containing # of images processed, time elapsed, no. of machines used'''
@@ -296,8 +291,8 @@ class Client_Driver():
         with open(filename,'w') as f:
             f.write(f"Input Path: {self.location_in}\n")
             f.write(f"Output Path: {self.location_out}\n")
-            f.write(f"Input File Count (File sizes <= {self.size_limit}): {len(self.filtered_filenames)}\n")
-            f.write(f"Input File Count (File sizes <= {self.size_limit}): {len(self.get_filenames(self.location_out))}\n")
+            f.write(f"Input File Count (File sizes <= {self.size_limit}MB): {len(self.filtered_filenames)}\n")
+            f.write(f"Input File Count (File sizes <= {self.size_limit}MB): {len(self.get_filenames(self.location_out))}\n")
             f.write(f"Time Elapsed: {elapsed:0.4f}s\n")
             f.write(f"No. of Machines: {self.c.n_machines}\n")
             f.close()

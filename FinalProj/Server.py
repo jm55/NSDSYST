@@ -65,15 +65,14 @@ class Server():
                                         blocked_connection_timeout=300)
                                 )
         print(f"{datetime.datetime.now()}: Server - Credentials -[{self.credentials.username}]:[{self.credentials.password}]")
-        self.channel_rcv = self.connection_rcv.channel(1)
-        self.channel_rcv.basic_qos(prefetch_count=os.cpu_count())
+        self.channel_rcv = self.connection_rcv.channel()
+        self.channel_rcv.basic_qos(prefetch_count=8, global_qos=True)
         self.channel_rcv.queue_declare(queue='adjustor', durable=True, arguments={'x-max-length':100, 'x-queue-type':'classic','message-ttl':300000})
         self.channel_rcv.basic_consume(queue='adjustor', on_message_callback=self.on_request, auto_ack=True)
-        self.channel_snd = self.connection_snd.channel(2)
-        self.channel_snd.basic_qos(prefetch_count=os.cpu_count())
+        self.channel_snd = self.connection_snd.channel()
+        self.channel_snd.basic_qos(prefetch_count=8, global_qos=True)
         self.channel_snd.exchange_declare(exchange='adjustor_fin', exchange_type=ExchangeType.topic)
-        #self.channel_snd.queue_declare(queue='adjustor_fin', durable=True, arguments={'x-max-length':100, 'x-queue-type':'classic','message-ttl':300000})
-
+        
     def run_queue(self, id:int):
         '''Watches the pending queue to execute the image processing.'''
         while True:
@@ -101,7 +100,7 @@ class Server():
             else:
                 file = json.loads(json.dumps(file))
                 print(self.print_header() + f"Returning {file['filename']}...")
-                self.channel_snd.basic_publish(exchange='adjustor_fin', routing_key=file["client_uid"], body=json.dumps(file))
+                self.channel_snd.basic_publish(exchange='adjustor_fin', routing_key=file["client_uid"], body=json.dumps(file), mandatory=True)
 
     def on_request(self, ch, method, props, body:str):
         json_body = json.loads(body)
