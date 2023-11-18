@@ -116,8 +116,8 @@ class Server():
     def on_request(self, ch, method, props, body:str):
         '''Will execute once the consumer (channel_rcv) consumes a message from 'adjustor' Message Queue.'''
         file = json.loads(body)
-        #json_body["client_uuid"] = props.headers["client_uuid"] # Attach the headers to the message
-        #json_body["item_uid"] = props.headers["item_uid"]
+        #file["client_uuid"] = props.headers["client_uuid"] # Attach the headers to the message
+        #file["item_uid"] = props.headers["item_uid"]
         self.pending.put_nowait(file) # Put requested (i.e., sent by client) image to pending queue for processing.
         self.connection_rcv.process_data_events()
         print(self.print_header() + f"{'Queued':15s} {file['filename']:30s} {'Remaining '+str(self.pending.qsize())}")
@@ -127,9 +127,9 @@ class Server():
         imdata = pickle.dumps(im)
         return base64.b64encode(imdata).decode('ascii')
     
-    def json2im(self, json_obj:json):
+    def json2im(self, file:json):
         """Convert a JSON string back to a Numpy array"""
-        imdata = base64.b64decode(json_obj['image'])
+        imdata = base64.b64decode(file['image'])
         im = pickle.loads(imdata)
         return im
 

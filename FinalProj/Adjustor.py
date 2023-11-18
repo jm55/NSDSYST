@@ -37,15 +37,15 @@ class Adjustor():
         imdata = pickle.dumps(im)
         return base64.b64encode(imdata).decode('ascii')
     
-    def json2im(self, json_obj:json):
+    def json2im(self, file:json):
         """Convert a JSON string back to a Numpy array"""
-        imdata = base64.b64decode(json_obj['image'])
+        imdata = base64.b64decode(file['image'])
         im = pickle.loads(imdata)
         return im
 
-    def adjust_image(self, json_obj:json):
+    def adjust_image(self, file:json):
         """Adjust Image"""
-        adj_image = self.adjust_bc(self.json2im(json_obj), json_obj['brightness'], json_obj['contrast'])
-        adj_image = self.adjust_sharpness(adj_image, json_obj['sharpness'])
-        cv2.imwrite(json_obj["output"] + json_obj['filename'], adj_image)
+        adj_image = self.adjust_bc(self.json2im(file), file['brightness'], file['contrast'])
+        adj_image = self.adjust_sharpness(adj_image, file['sharpness'])
+        cv2.imwrite(file["output"] + file['filename'], adj_image)
         return adj_image
