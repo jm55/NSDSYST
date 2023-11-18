@@ -33,7 +33,7 @@ class Server():
         self.pending = Queue()
         self.finished = Queue()
         self.procs = []
-        self.connect_to_server()
+        self.connect_to_broker()
         print(self.print_header() + f"Running {os.cpu_count()} cores...")
         for w in range(os.cpu_count()+1):
             p = Process(target=self.run_queue, args=(int(w),))
@@ -50,8 +50,12 @@ class Server():
     def print_header(self):
         return f'{datetime.datetime.now()}: Server - '
 
-    def connect_to_server(self):
+    def connect_to_broker(self):
+        '''Connects the server to RabbitMQ'''
+        # RabbitMQ Credentials
         self.credentials = pika.PlainCredentials('rabbituser','rabbit1234')
+        print(f"{datetime.datetime.now()}: Server - Credentials -[{self.credentials.username}]:[{self.credentials.password}]")
+        # Connection Setup
         self.connection_rcv =   pika.BlockingConnection(
                                     pika.ConnectionParameters(
                                         Server.IP, Server.PORT, Server.ROOT, self.credentials, 
@@ -64,17 +68,21 @@ class Server():
                                         connection_attempts=128, retry_delay=3, heartbeat=100, 
                                         blocked_connection_timeout=300)
                                 )
-        print(f"{datetime.datetime.now()}: Server - Credentials -[{self.credentials.username}]:[{self.credentials.password}]")
+        # Receive Channel Setup
         self.channel_rcv = self.connection_rcv.channel()
         self.channel_rcv.basic_qos(prefetch_count=8, global_qos=True)
-        self.channel_rcv.queue_declare(queue='adjustor', durable=True, arguments={'x-max-length':100, 'x-queue-type':'classic','message-ttl':300000})
-        self.channel_rcv.basic_consume(queue='adjustor', on_message_callback=self.on_request, auto_ack=True)
+        self.channel_rcv.queue_declare(queue='adjustor', durable=True, arguments={'x-max-length':100, 'x-queue-type':'classic','message-ttl':300000}) # Receive channel will use Message Queue 'adjustor'
+        self.channel_rcv.basic_consume(queue='adjustor', on_message_callback=self.on_request, auto_ack=True) # Receive channel will consume messages from Queue
+        # Send Channel Setup
         self.channel_snd = self.connection_snd.channel()
         self.channel_snd.basic_qos(prefetch_count=8, global_qos=True)
-        self.channel_snd.exchange_declare(exchange='adjustor_fin', exchange_type=ExchangeType.topic)
+        self.channel_snd.exchange_declare(exchange='adjustor_fin', exchange_type=ExchangeType.topic) # Send channel will use the Topic Exchange 'adjustor_fin'
         
     def run_queue(self, id:int):
-        '''Watches the pending queue to execute the image processing.'''
+        '''
+        Watches the pending queue to execute the image processing.
+        Note that this runs on a threaded manner.
+        '''
         while True:
             try:
                 file = self.pending.get() # This will raise an exception if it is empty
@@ -91,7 +99,10 @@ class Server():
                 self.finished.put_nowait(file)
 
     def run_deliver(self):
-        '''Watches the finished queue to deliver the finished products to respective users (via Client UUID)'''
+        '''
+        Watches the finished queue to deliver the finished products to respective users (via client_uuid).
+        Note that this runs on a threaded manner.
+        '''
         while True:
             try:
                 file = self.finished.get()
@@ -100,11 +111,12 @@ class Server():
             else:
                 file = json.loads(json.dumps(file))
                 print(self.print_header() + f"Returning {file['filename']}...")
-                self.channel_snd.basic_publish(exchange='adjustor_fin', routing_key=file["client_uid"], body=json.dumps(file), mandatory=True)
+                self.channel_snd.basic_publish(exchange='adjustor_fin', routing_key=file["client_uuid"], body=json.dumps(file), mandatory=True)
 
     def on_request(self, ch, method, props, body:str):
+        '''Will execute once the consumer (channel_rcv) consumes a message from 'adjustor' Message Queue.'''
         json_body = json.loads(body)
-        json_body["client_uid"] = props.headers["client_uid"]
+        json_body["client_uuid"] = props.headers["client_uuid"] # Attach the headers to the message
         #json_body["item_uid"] = props.headers["item_uid"]
         self.pending.put_nowait(json_body) # Put requested (i.e., sent by client) image to pending queue for processing.
         print(f"{datetime.datetime.now()}: Server - Queued {json_body['filename']}, Queue = {self.pending.qsize()}")
