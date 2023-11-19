@@ -23,11 +23,22 @@ OpenCV Image to JSON - https://stackoverflow.com/a/55900422
 '''
 
 class Server():
-    IP = '192.168.56.1'
-    PORT = 5672
+    IP = '192.168.56.1' # IP of the message broker
+    PORT = 5672 # Port of the Message Broker
     ROOT = '/'
-
     def __init__(self):
+        print("====SERVER====")
+        tempIP = input(f"Enter Message Broker IP Address (leave empty for {Server.IP}): ")
+        tempPORT = input(f"Enter Message Broker Port No. (leave empty for {Server.PORT}): ")
+        tempROOT = input(f"Enter Root Directory to Message Broker (leave empty for {Server.ROOT}): ")
+        if tempIP != "":
+            Server.IP = tempIP
+        if tempPORT != "":
+            Server.PORT = int(tempPORT)
+        if tempROOT != "":
+            Server.ROOT = tempROOT
+        os.system('clear')
+
         print("====SERVER====")
         self.a = Adjustor()
         self.pending = Queue()
@@ -59,13 +70,13 @@ class Server():
         self.connection_rcv =   pika.BlockingConnection(
                                     pika.ConnectionParameters(
                                         Server.IP, Server.PORT, Server.ROOT, self.credentials, 
-                                        connection_attempts=128, retry_delay=3, heartbeat=100, 
+                                        connection_attempts=32, retry_delay=3, heartbeat=100, 
                                         blocked_connection_timeout=300)
                                 )
         self.connection_snd =   pika.BlockingConnection(
                                     pika.ConnectionParameters(
                                         Server.IP, Server.PORT, Server.ROOT, self.credentials, 
-                                        connection_attempts=128, retry_delay=3, heartbeat=100, 
+                                        connection_attempts=32, retry_delay=3, heartbeat=100, 
                                         blocked_connection_timeout=300)
                                 )
         # Receive Channel Setup

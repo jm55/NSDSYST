@@ -24,11 +24,22 @@ OpenCV Image to JSON - https://stackoverflow.com/a/55900422
 '''
 
 class Client():
-    IP = '192.168.56.1' # IP of the message broker
+    IP = 'localhost' # IP of the message broker
     PORT = 5672 # Port of the Message Broker
-    ROOT = '/' # Root Directory of the Message Broker (depends on credentials)
-
+    ROOT = '/' 
     def __init__(self):
+        print("====CLIENT====")
+        tempIP = input(f"Enter Message Broker IP Address (leave empty for {Client.IP}): ")
+        tempPORT = input(f"Enter Message Broker Port No. (leave empty for {Client.PORT}): ")
+        tempROOT = input(f"Enter Root Directory to Message Broker (leave empty for {Client.ROOT}): ")
+        if tempIP != "":
+            Client.IP = tempIP
+        if tempPORT != "":
+            Client.PORT = int(tempPORT)
+        if tempROOT != "":
+            Client.ROOT = tempROOT
+        os.system('clear')
+
         print("====CLIENT====")
         self.CLIENT_UUID = str(uuid.uuid1()) # Client UUID
         self.running = True # For controlling threads
@@ -69,13 +80,13 @@ class Client():
         print(self.print_header() + f"Connecting (RCV & SND) to RabbitMQ...")
         self.connection_snd =   pika.BlockingConnection( # Dedicated connection for sending requests
                                     pika.ConnectionParameters(Client.IP, Client.PORT, Client.ROOT, 
-                                                              self.credentials, connection_attempts=128, 
+                                                              self.credentials, connection_attempts=32, 
                                                               retry_delay=1, heartbeat=600, 
                                                               blocked_connection_timeout=300)
                                 )
         self.connection_rcv =   pika.BlockingConnection( # Dedicated connection for receiving processed requests
                                     pika.ConnectionParameters(Client.IP, Client.PORT, Client.ROOT, 
-                                                              self.credentials, connection_attempts=128, 
+                                                              self.credentials, connection_attempts=32, 
                                                               retry_delay=1, heartbeat=600, 
                                                               blocked_connection_timeout=300)
                                 )
@@ -148,7 +159,7 @@ class Client():
             print(self.print_header() + f"Restarting Connection & Channel...")
             self.connection_snd =   pika.BlockingConnection(
                                         pika.ConnectionParameters(Client.IP, Client.PORT, Client.ROOT, self.credentials, 
-                                                                connection_attempts=128, retry_delay=1, heartbeat=100, 
+                                                                connection_attempts=32, retry_delay=1, heartbeat=100, 
                                                                 blocked_connection_timeout=300)
                                     )
             self.channel_snd = self.connection_snd.channel()
@@ -158,7 +169,7 @@ class Client():
             print(self.print_header() + f"Restarting Connection & Channel...")
             self.connection_snd =   pika.BlockingConnection(
                                         pika.ConnectionParameters(Client.IP, Client.PORT, Client.ROOT, self.credentials, 
-                                                                connection_attempts=128, retry_delay=1, heartbeat=100, 
+                                                                connection_attempts=32, retry_delay=1, heartbeat=100, 
                                                                 blocked_connection_timeout=300)
                                     )
             self.channel_snd = self.connection_snd.channel()
@@ -247,10 +258,7 @@ class Client_Driver():
         return filtered_filenames
 
     def runtime(self):
-        if platform == "linux" or platform == "linux2":
-            os.system('clear')
-        elif platform == "win32":
-            os.system('cls')
+        os.system('clear')
         self.c = Client()
         self.size_limit = 5 #MB
         print(f"NOTE: Input files limited to {self.size_limit}MB")
@@ -288,8 +296,8 @@ class Client_Driver():
         with open(filename,'w') as f:
             f.write(f"Input Path: {self.location_in}\n")
             f.write(f"Output Path: {self.location_out}\n")
-            f.write(f"Input File Count (File sizes <= {self.size_limit}MB): {len(self.filtered_filenames)}\n")
-            f.write(f"Input File Count (File sizes <= {self.size_limit}MB): {len(self.get_filenames(self.location_out))}\n")
+            f.write(f"Input File Count: {len(self.get_filenames(self.location_in))}\n")
+            f.write(f"Output File Count (File sizes <= {self.size_limit}MB): {len(self.get_filenames(self.location_out))}\n")
             f.write(f"Time Elapsed: {elapsed:0.4f}s\n")
             f.write(f"No. of Machines: {self.c.n_machines}\n")
             f.close()
