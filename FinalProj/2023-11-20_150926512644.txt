@@ -1,0 +1,6 @@
+Input Path: /home/administrator/Documents/GitHub/NSDSYST/FinalProj/tokyo/
+Output Path: /home/administrator/Documents/GitHub/NSDSYST/FinalProj/tokyo_output//
+Input File Count: 55
+Output File Count (File sizes <= 5MB): 49
+Time Elapsed: 86.0230s
+No. of Machines: 2
