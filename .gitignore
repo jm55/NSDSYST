@@ -1,5 +1,5 @@
-*FinalProj\tokyo_output*
-*FinalProj\crops_output*
+*FinalProj/tokyo_output/*
+*FinalProj/crops_output/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
