@@ -24,9 +24,7 @@ class Adjustor():
 
     def adjust_bc(self, image, brightness:int, contrast:int):
         """Image Brightness and Contrast Control"""
-        brightness = int(50 * (brightness/100)) 
-        contrast = int(50 * (contrast/100)) 
-        return cv2.convertScaleAbs(image, alpha=contrast, beta=brightness)
+        return cv2.convertScaleAbs(image, alpha=int(50*(contrast/100)) , beta=int(50 * (brightness/100)))
 
     def adjust_sharpness(self, image, sharpness:int):
         """Image Sharpness Control"""
@@ -34,18 +32,15 @@ class Adjustor():
         
     def im2json(self, im):
         """Convert a Numpy array to JSON string"""
-        imdata = pickle.dumps(im)
-        return base64.b64encode(imdata).decode('ascii')
+        return base64.b64encode(pickle.dumps(im)).decode('ascii')
     
     def json2im(self, file:json):
         """Convert a JSON string back to a Numpy array"""
-        imdata = base64.b64decode(file['image'])
-        im = pickle.loads(imdata)
-        return im
+        return pickle.loads(base64.b64decode(file['image']))
 
     def adjust_image(self, file:json):
         """Adjust Image"""
         adj_image = self.adjust_bc(self.json2im(file), file['brightness'], file['contrast'])
         adj_image = self.adjust_sharpness(adj_image, file['sharpness'])
-        cv2.imwrite(file["output"] + file['filename'], adj_image)
+        #cv2.imwrite(file["output"] + file['filename'], adj_image)
         return adj_image

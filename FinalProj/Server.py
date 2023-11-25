@@ -23,30 +23,34 @@ OpenCV Image to JSON - https://stackoverflow.com/a/55900422
 '''
 
 class Server():
-    IP = '192.168.56.1' # IP of the message broker
-    PORT = 5672 # Port of the Message Broker
-    ROOT = '/'
+    
     def __init__(self):
+        self.IP = '192.168.56.1' # IP of the message broker
+        self.PORT = 5672 # Port of the Message Broker
+        self.ROOT = '/'
+        self.CORE = os.cpu_count()
         print("====SERVER====")
-        tempIP = input(f"Enter Message Broker IP Address (leave empty for {Server.IP}): ")
-        tempPORT = input(f"Enter Message Broker Port No. (leave empty for {Server.PORT}): ")
-        tempROOT = input(f"Enter Root Directory to Message Broker (leave empty for {Server.ROOT}): ")
+        tempIP = input(f"Enter Message Broker IP Address (leave empty for {self.IP}): ")
+        tempPORT = input(f"Enter Message Broker Port No. (leave empty for {self.PORT}): ")
+        tempROOT = input(f"Enter Root Directory to Message Broker (leave empty for {self.ROOT}): ")
+        tempCORE = input(f"Enter number of threads to use (leave empty for {os.cpu_count()}): ")
         if tempIP != "":
-            Server.IP = tempIP
+            self.IP = tempIP
         if tempPORT != "":
-            Server.PORT = int(tempPORT)
+            self.PORT = int(tempPORT)
         if tempROOT != "":
-            Server.ROOT = tempROOT
+            self.ROOT = tempROOT
+        if tempCORE != "":
+            self.CORE = int(tempCORE)
         os.system('clear')
-
         print("====SERVER====")
         self.a = Adjustor()
         self.pending = Queue()
         self.finished = Queue()
         self.procs = []
         self.connect_to_broker()
-        print(self.print_header() + f"Running {os.cpu_count()} cores...")
-        for w in range(os.cpu_count()+1):
+        print(self.print_header() + f"Running {self.CORE} cores...")
+        for w in range(self.CORE+1):
             p = Process(target=self.run_queue, args=(int(w),))
             self.procs.append(p)
             p.start()
@@ -69,24 +73,24 @@ class Server():
         # Connection Setup
         self.connection_rcv =   pika.BlockingConnection(
                                     pika.ConnectionParameters(
-                                        Server.IP, Server.PORT, Server.ROOT, self.credentials, 
-                                        connection_attempts=32, retry_delay=3, heartbeat=100, 
+                                        self.IP, self.PORT, self.ROOT, self.credentials, 
+                                        connection_attempts=32, retry_delay=1, heartbeat=32, 
                                         blocked_connection_timeout=300)
                                 )
         self.connection_snd =   pika.BlockingConnection(
                                     pika.ConnectionParameters(
-                                        Server.IP, Server.PORT, Server.ROOT, self.credentials, 
-                                        connection_attempts=32, retry_delay=3, heartbeat=100, 
+                                        self.IP, self.PORT, self.ROOT, self.credentials, 
+                                        connection_attempts=32, retry_delay=1, heartbeat=32, 
                                         blocked_connection_timeout=300)
                                 )
         # Receive Channel Setup
         self.channel_rcv = self.connection_rcv.channel()
-        self.channel_rcv.basic_qos(prefetch_count=8, global_qos=True)
-        self.channel_rcv.queue_declare(queue='adjustor', durable=True, arguments={'x-max-length':100, 'x-queue-type':'classic','message-ttl':300000}) # Receive channel will use Message Queue 'adjustor'
+        self.channel_rcv.basic_qos(prefetch_count=os.cpu_count(), global_qos=False)
+        self.channel_rcv.queue_declare(queue='adjustor', durable=True, auto_delete=True, arguments={'x-max-length':100, 'x-queue-type':'classic','message-ttl':300000}) # Receive channel will use Message Queue 'adjustor'
         self.channel_rcv.basic_consume(queue='adjustor', on_message_callback=self.on_request, auto_ack=True) # Receive channel will consume messages from Queue
         # Send Channel Setup
         self.channel_snd = self.connection_snd.channel()
-        self.channel_snd.basic_qos(prefetch_count=8, global_qos=True)
+        self.channel_snd.basic_qos(prefetch_count=os.cpu_count(), global_qos=False)
         self.channel_snd.exchange_declare(exchange='adjustor_fin', exchange_type=ExchangeType.topic) # Send channel will use the Topic Exchange 'adjustor_fin'
         
     def run_queue(self, id:int):
@@ -104,8 +108,7 @@ class Server():
                 print(self.print_header() + f'{"Processing:":15s} {file["filename"]:30s} Thread-{str(id):3s}')
                 start = time.time()
                 image = self.a.adjust_image(file) # Executes actual image processing
-                end = time.time()
-                print(self.print_header() + f'{"Processed:":15s} {file["filename"]:30s} Thread-{str(id):3s} {end-start:0.2f}s')
+                print(self.print_header() + f'{"Processed:":15s} {file["filename"]:30s} Thread-{str(id):3s} {time.time()-start:0.2f}s')
                 file["image"] = self.im2json(image)
                 self.finished.put_nowait(file)
 
@@ -127,22 +130,17 @@ class Server():
     def on_request(self, ch, method, props, body:str):
         '''Will execute once the consumer (channel_rcv) consumes a message from 'adjustor' Message Queue.'''
         file = json.loads(body)
-        #json_body["client_uuid"] = props.headers["client_uuid"] # Attach the headers to the message
-        #json_body["item_uid"] = props.headers["item_uid"]
         self.pending.put_nowait(file) # Put requested (i.e., sent by client) image to pending queue for processing.
         self.connection_rcv.process_data_events()
         print(self.print_header() + f"{'Queued':15s} {file['filename']:30s} {'Remaining '+str(self.pending.qsize())}")
 
     def im2json(self, im):
         """Convert a Numpy array to JSON string"""
-        imdata = pickle.dumps(im)
-        return base64.b64encode(imdata).decode('ascii')
+        return base64.b64encode(pickle.dumps(im)).decode('ascii')
     
     def json2im(self, file:json):
         """Convert a JSON string back to a Numpy array"""
-        imdata = base64.b64decode(file['image'])
-        im = pickle.loads(imdata)
-        return im
+        return pickle.loads(base64.b64decode(file['image']))
 
 def main():
     s = Server()
