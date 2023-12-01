@@ -1,6 +1,0 @@
-Input Path: /home/administrator/Documents/GitHub/NSDSYST/FinalProj/crops/
-Output Path: /home/administrator/Documents/GitHub/NSDSYST/FinalProj/crops_output//
-Input File Count: 773
-Output File Count (File sizes <= 5MB): 773
-Time Elapsed: 69.6213s
-No. of Machines: 2

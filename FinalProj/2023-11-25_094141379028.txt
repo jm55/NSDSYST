@@ -1,0 +1,6 @@
+Input Path: /home/kali/Documents/GitHub/NSDSYST/FinalProj/tokyo/
+Output Path: /home/kali/Documents/GitHub/NSDSYST/FinalProj/tokyo_output//
+Input File Count: 55
+Output File Count (File sizes <= 5MB): 49
+Time Elapsed: 46.1989s
+No. of Machines: 2

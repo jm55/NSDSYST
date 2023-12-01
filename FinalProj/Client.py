@@ -42,6 +42,7 @@ class Client():
 
         print("====CLIENT====")
         self.CLIENT_UUID = str(uuid.uuid1()) # Client UUID
+        print(self.print_header() + f"ID: {self.CLIENT_UUID}")
         self.running = True # For controlling threads
         self.received = Queue() # For handling received items
         self.connect_to_server() # Prepare the communications to the server.
@@ -55,6 +56,7 @@ class Client():
             writers[i].start()
         print(self.print_header() + "File writers prepared!")
         self.start_consuming()
+        print(self.print_header() + f"Client Consuming Inbound Messages!")
 
     def start_consuming(self):
         '''Starts the consumption of processed images.'''
@@ -80,20 +82,20 @@ class Client():
         print(self.print_header() + f"Connecting (RCV & SND) to RabbitMQ...")
         self.connection_snd =   pika.BlockingConnection( # Dedicated connection for sending requests
                                     pika.ConnectionParameters(Client.IP, Client.PORT, Client.ROOT, 
-                                                              self.credentials, connection_attempts=32, 
-                                                              retry_delay=1, heartbeat=600, 
+                                                              self.credentials, connection_attempts=8, 
+                                                              retry_delay=1, heartbeat=32, 
                                                               blocked_connection_timeout=300)
                                 )
         self.connection_rcv =   pika.BlockingConnection( # Dedicated connection for receiving processed requests
                                     pika.ConnectionParameters(Client.IP, Client.PORT, Client.ROOT, 
-                                                              self.credentials, connection_attempts=32, 
-                                                              retry_delay=1, heartbeat=600, 
+                                                              self.credentials, connection_attempts=8, 
+                                                              retry_delay=1, heartbeat=32, 
                                                               blocked_connection_timeout=300)
                                 )
         print(self.print_header() + f"Connected (RCV & SND) to RabbitMQ!")
         #Count Machines
         self.channel_count = self.connection_rcv.channel()
-        result = self.channel_count.queue_declare(queue='adjustor', durable=True, arguments={'x-max-length':100, 'x-queue-type':'classic','message-ttl':300000})
+        result = self.channel_count.queue_declare(queue='adjustor', durable=True, auto_delete=True, arguments={'x-max-length':100, 'x-queue-type':'classic','message-ttl':300000})
         self.n_machines = result.method.consumer_count
         print(self.print_header() + f"No. of Consumers Detected = {self.n_machines}")
         # Create Send & Receive Channels
@@ -131,7 +133,7 @@ class Client():
     def on_receive(self, ch, method, props, body:str):
         '''Will execute once the consumer (channel_rcv) consumes a message from 'adjustor' Message Queue.'''
         file = json.loads(body)
-        print(self.print_header() + f"{'Received:':10s} {file['filename']:30s}")
+        print(self.print_header() + f"{'Received:':10s} {file['filename']:30s} Remaining: {self.received.qsize()}")
         if self.corr_id == props.correlation_id and file['client_uuid'] == self.CLIENT_UUID:
             self.received.put_nowait(body)
         else:
@@ -177,14 +179,11 @@ class Client():
     
     def im2json(self, im):
         """Convert a Numpy array to JSON string"""
-        imdata = pickle.dumps(im)
-        return base64.b64encode(imdata).decode('ascii')
+        return base64.b64encode(pickle.dumps(im)).decode('ascii')
     
     def json2im(self, file:json):
         """Convert a JSON string back to a Numpy array."""
-        imdata = base64.b64decode(file['image'])
-        im = pickle.loads(imdata)
-        return im
+        return pickle.loads(base64.b64decode(file['image']))
         
     def json_generate(self, input_folder, filename:str, output_folder, brightness, contrast, sharpness):
         '''JSONify the inputs and the image object itself'''
