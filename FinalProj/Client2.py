@@ -320,5 +320,5 @@ class Client_Driver():
         exit(0)
 
 if __name__ == '__main__':
-    auto_params = ["/media/sf_NSDSYST/FinalProj/crops/", 10, 10, 10]
+    auto_params = ["/media/sf_NSDSYST/FinalProj/tokyo/", 10, 10, 10]
     Client_Driver(True, auto_params)

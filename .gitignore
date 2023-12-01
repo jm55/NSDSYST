@@ -3,6 +3,12 @@
 *FinalProj/crops_output*
 *FinalProj/tokyo_output*
 
+*FinalProj/tokyo*
+*FinalProj/crops*
+*FinalProj/faces*
+
+*.pcap
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
