@@ -1,0 +1,6 @@
+Input Path: /media/sf_NSDSYST/FinalProj/crops/
+Output Path: /media/sf_NSDSYST/FinalProj/crops_output/
+Input File Count: 773
+Output File Count (File sizes <= 5MB): 773
+Time Elapsed: 95.7777s
+No. of Machines: 2

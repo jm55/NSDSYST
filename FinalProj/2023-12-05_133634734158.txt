@@ -1,0 +1,6 @@
+Input Path: /media/sf_NSDSYST/FinalProj/faces/
+Output Path: /media/sf_NSDSYST/FinalProj/faces_output/
+Input File Count: 1800
+Output File Count (File sizes <= 5MB): 1800
+Time Elapsed: 140.2520s
+No. of Machines: 2
