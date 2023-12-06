@@ -71,13 +71,13 @@ Server-to-Client communication uses the Topic Exchange model of RabbitMQ where i
 
 # Requirements
 
-- Docker
-    - RabbitMQ
+- Docker (24.0.7)
+    - RabbitMQ (3.12.8)
 - Python 3 (3.10.x and above)
 - Python Libraries
-    - [OpenCV](https://pypi.org/project/opencv-python/) (`opencv-python`)
-    - [Pika](https://pika.readthedocs.io/en/stable/) (`pika`)
-    - [Pillows](https://pypi.org/project/Pillow/) (`pillows`)
+    - [OpenCV 4.8.1.78](https://pypi.org/project/opencv-python/) (`opencv-python`)
+    - [Pika 1.3.2](https://pika.readthedocs.io/en/stable/) (`pika`)
+    - [Pillows 10.0.0](https://pypi.org/project/Pillow/) (`pillows`)
 - OS Environment: Only tested in Linux (Debian/Ubuntu)
 
 # Setup
